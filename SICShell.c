@@ -1,390 +1,7 @@
-/*
-   +--------------------------------------------------------------+
-   |                 System Programming Project 2                 |
-   |                       ( SIC Shell )                          |
-   |                                                              |
-   |  File    : 20161622.c                                        |
-   |  Created : Mar 18 ~ Mar 24, 2018                             |
-   |  Author  : Ye-eun Lee                                        |
-   |  Purpose :                                                   |
-   |     1. Implementation of shell to execute assemblers, links  |
-   |        ,and loaders                                          |
-   |     2. Implementation of memory space in which object code   |
-   |        created by compilation is loaded and executed         |
-   |     3. Implemettationof OPCODE table which converts mnemonic |
-   |        of SIC / XE machine to opcode value                   |
-   |                                                              |
-   +--------------------------------------------------------------+
-   */
-#include "20161622.h"
-
-int main(){
-	int mode;		//execute mode
-
-	MemInit();			//Initialize memory array
-	MakeHashTable();	//Make hash table
-
-	while(1){
-		ParInit();		//Initialize parameter(par)
-
-		//get input
-		printf("sicsim> ");
-		mode = Input();
-		printf("mode: %d\n",mode);
-		// execute the command according to mode
-		if(mode!=-1)	AddHistory();	// If input is valid, add command to history 
-
-		switch(mode){
-			case -1:	// If input is invalid, get input again
-				continue;
-				break;
-			case H:		// execute Help()
-				Help();
-				break;
-			case D:		// execute Dir()
-				Dir();
-				break;
-			case Q:		// memory free and exit the program
-				FreeHistory();
-				FreeHash();
-				return 0;
-				break;
-			case HI:	// execute History()
-				History();
-				break;
-			case DU:	// execute Dump()
-				Dump();
-				break;
-			case E:		//execute Edit()
-				Edit();
-				break;
-			case F:		//execute Fill()
-				Fill();
-				break;
-			case RESET:	//execute Reset()
-				Reset();
-				break;
-			case OPCODELIST:	//execute Opcodelist()
-				Opcodelist();
-				break;
-			case OPCODEMNEMONIC:	//execute OpcodeMnemonic
-				OpcodeMnemonic();
-				break;
-			case ASSEMBLE:
-				Assemble(par[0]);
-				break;
-			case TYPE:
-				Type(par[0]);
-				break;
-			case SYMBOL:
-				break;
-		}
-	}
-}
-
-
-int IsAssemFile(char *file_name){
-	// Check that file type is '.asm' 
-	// If filename in par[0] is '.asm' file, return 1
-	// If not, return 0
-	int i;
-	int check_asm=0;
-
-	for(i=0 ; i< strlen(file_name) ; i++){
-		if(par[0][i]=='.'){
-			if(strlen(file_name)-i == 4){
-				if(file_name[i+1]=='a' && file_name[i+2]=='s' && file_name[i+3]=='m') return 1;
-				else return 0;
-			}
-			else return 0;
-		}
-	}
-	if(check_asm == 4) return 1;
-
-	return 0;
-
-}
-
-
-
-int Assemble(char *file_name){
-	FILE *fp;
-
-	//check file type and name
-	if(!IsAssemFile(file_name)){
-		printf("%s is not .asm file\n", file_name);
-		return -1;
-	}
-	fp = fopen(par[0], "r");
-	if(fp==NULL){
-		printf("%s not founded\n",file_name);
-	}
-	fclose(fp);
-
-	//InitAssemNode();
-	InitAssemNode();
-
-	if(AssemPass1(file_name)==-1) return -1;
-
-
-}
-
-int AssemPass1(char* file_name){
-	int i;
-	FILE *fp = fopen(file_name, "r");
-	char asm_line[MAX_LINESIZE];
-	char tk_str[MAX_ASM_TOKEN][MAX_LINESIZE] = {'\0'};
-	int location;
-	int pc;
-
-	while(fgets(asm_line,MAX_LINESIZE,fp)!=NULL){
-		AssemToken(asm_line, tk_str);
-		printf("%s | %s | %s | %s \n",tk_str[0],tk_str[1],tk_str[2],tk_str[3]);
-		MakeAssemNode(tk_str);
-		/*
-		   if(!strcpy(tk_str[1], "START")){
-		   location  = HexToDec(tk_str[2]);
-
-		   if (location == -1){
-		   printf("line %d ERROR: start address is not valid", assem_rear->line);
-		   }
-		   continue;
-		//write listing line
-		}
-		else
-		location = 0;
-		*/
-	}
-
-}
-
-int AssemToken(char asm_line[], char tk_str[][MAX_LINESIZE]){
-	int i=0, j=0;
-	int comment_flag=0;
-	char *tk;
-	char asm_str[MAX_LINESIZE] = {'\0'};
-
-
-	for(i=0; i < strlen(asm_line) ;){
-		if(asm_line[i]==','){
-			i++;
-			asm_str[j++] = ' ';
-			asm_str[j++] = ',';
-			asm_str[j++] = ' ';
-			continue;
-		}
-		asm_str[j++]=asm_line[i++];
-	}
-	
-	for(i=0; i<MAX_ASM_TOKEN; i++){
-		tk_str[i][0] = '\0';
-	}
-
-	i=0;
-	tk = strtok(asm_str, " \t\n");
-	do{
-		strcpy(tk_str[i],tk);
-
-		//process comment
-		if(tk_str[i][0]=='.'){
-			strcpy(tk_str[i],".");
-			strcpy(tk_str[i+1],asm_line);
-			break;
-		}
-
-		//process','
-		i++;
-
-	}while( (tk = strtok(NULL, " \t\n")) );
-}
-
-
-
-int MakeAssemNode(char tkstr[][MAX_LINESIZE]){
-	//retrun -1 :  error
-	//return 0 : comment
-	//return Inst : 2
-	//return Pseudo : 1
-	int ret;
-	int i;
-	int opcode,pseudo;
-	assem_node *new_node;
-	new_node = (assem_node*)malloc( sizeof(assem_node) );
-
-	//node init;
-	strcpy(new_node->comment, "\0");
-	strcpy(new_node->sym, "\0");
-	strcpy(new_node->inst, "\0");
-	new_node->next = NULL;
-	//location
-	new_node->line = (assem_rear==NULL) ?  5 : ( (assem_rear->line) + 5 );
-
-
-
-	//link node
-	if(assem_head==NULL){
-		assem_rear = new_node;
-		assem_head = new_node;
-	}
-	else{
-		assem_rear->next = new_node;
-		assem_rear = new_node;
-	}
-
-
-	//comment
-	if(tkstr[0][0]=='.'){
-		strcpy(new_node->sym, ".");
-		strcpy(new_node->comment, tkstr[1]);
-		return 0;
-	}
-
-	//save symbol, instruction, opcode in format 4;
-	for(i=0; i<2; i++){
-		if(tkstr[i][0]=='+') {
-			opcode = FindOpcode(&tkstr[i][1]);
-			if(opcode != -1){
-				if(!strcmp(FindForm(&tkstr[i][1]),"3/4")){
-					new_node->form = 4;
-					new_node->opcode = opcode;
-					strcpy(new_node->inst , &tkstr[i][1]);
-					if(i==1){
-						strcpy(new_node->sym, &tkstr[i][1]);
-					}
-					return 2;
-				}
-				else{
-					PRINT_ERROR(new_node->line, "invalid intstruction");
-					return -1;
-				}
-			}
-		}
-	}
-	//sybol, instruction, opcode o.w
-	for(i=0;i<2; i++){
-		opcode = FindOpcode(tkstr[i]);
-		pseudo = FindPseudoInstr(tkstr[i]);
-
-			
-
-	}
-
-/*
-	else if({
-		if(FindOpcode(tkstr[1])==-1 && FindPseudoInstr(tkstr[1])==-1){	
-			printf("line %d ERROR: no valid instruction.\n",new_node->line);
-			ret =  -1;
-		}
-		else{
-			new_node->form = FindForm(tkstr[1])[0]-'0';
-			strcpy(new_node->sym, tkstr[0]);
-			strcpy(new_node->inst, tkstr[1]);
-		}
-	}
-	else{
-		if(FindOpcode(tkstr[1])==-1 && FindPseudoInstr(tkstr[1])==-1){
-			strcpy(new_node->inst, tkstr[0]);		
-			new_node->form = FindForm(tkstr[1])[0]-'0';
-		}
-		else{
-			printf("line %d ERROR: Symbol name overlaps with instruction\n",new_node->line);
-			ret = -1;
-		}
-	}
-
-*/
-	return ret;
-}
-
-int FindOpcode(char* key){	
-	opcode_node* tmp;	// opcode_list pointer for searching
-	int hash_val=0,i;		// idx: hash table index, i:index
-
-	strcpy(key, par[0]);	//key get mnemonic to find
-
-	//get hash value
-	for( i=0; i<(int)strlen(key) ; i++)	
-		hash_val += key[i];
-	hash_val %= HASH_MOD;
-
-	for(tmp = hash[hash_val].head; tmp!=NULL; tmp = tmp->next){
-		if(!strcmp( key, tmp->mnemonic)) {
-			return tmp->opcode;
-		}
-	}	
-
-	//If you can't find the opcode, return -1
-	return -1;
-}
-char* FindForm(char* key){
-	opcode_node* tmp;	// opcode_list pointer for searching
-	int hash_val=0,i;		// idx: hash table index, i:index
-
-	//get hash value
-	for( i=0; i<(int)strlen(key) ; i++)	
-		hash_val += key[i];
-	hash_val %= HASH_MOD;
-
-	for(tmp = hash[hash_val].head; tmp!=NULL; tmp = tmp->next){
-		if(!strcmp( key, tmp->mnemonic)) {
-			return tmp->form;
-		}
-	}	
-
-	//If you can't find the opcode, return -1
-	return NULL;
-}
-int FindPseudoInstr(char* key){
-	int i;	
-	for(i=0; i < 6; i++){
-		if(!strcmp(key, pseudo_instr[i]))
-			return i;
-	}
-
-	return -1;
-}
-
-
-
-void InitAssemNode(){
-	assem_node *tmp_p, *del_p;
-
-	tmp_p = assem_head;	
-	while(1){	
-		if(tmp_p == NULL) return;
-		del_p = tmp_p;
-		tmp_p = tmp_p->next;
-		free(del_p);
-	}
-
-	assem_head = NULL;
-	assem_rear = NULL;
-}
-
-
-
-int Type(char *file_name){
-	FILE *fp = fopen(par[0],"r");
-	char in;
-
-	if(!fp){
-		printf("File not found\n");
-		return -1;
-	}
-	while( fscanf(fp,"%c",&in)!=EOF ){
-		printf("%c",in);
-	}
-	fclose(fp);
-	return 0;
-}
-
-
-
-
-/*********************** Initialization ********************/
+/************************ Initialization ********************/
 void ParInit(){
 	//Initialize parameter to '\0'	
-
+	
 	int i;
 
 	for( i=0;i<MAX_PARAMETER ; i++){
@@ -395,7 +12,7 @@ void ParInit(){
 
 void MemInit(){
 	//Initialize memory to "00"
-
+	
 	int i=0;
 	char tmp_str[]="00"; //string to copy
 
@@ -409,11 +26,11 @@ int Input(){
 	//Get input to process
 	//And if the input match the format, return command value to exeicute
 	//If not, return -1
-
+	
 	char ch_in; 	//input char
 	int i=0,j=0;	//i:index for cmd, j:index for command	
 	char cmd[COMMANDSIZE];	//cmd is string to process command efficiently 
-	//command is global variable to be saved in history
+							//command is global variable to be saved in history
 
 	//get input
 	while(1){
@@ -433,7 +50,7 @@ int Input(){
 			cmd[i++] = ch_in;
 			command[j++] = ch_in;
 		}
-
+		
 		//if input is too long, then print error massage and return -1
 		if(i>=COMMANDSIZE-1){
 			PrintCmdERROR();	
@@ -444,7 +61,7 @@ int Input(){
 	//add '\0' to end of input
 	cmd[i] = '\0';
 	command[j] = '\0';
-
+	
 	//return processed Command value
 	return ProcessCommand(cmd);
 
@@ -479,7 +96,7 @@ int ProcessCommand(char* cmd){
 			return -1;
 		}
 	}while( (tk = strtok(NULL, " \t") ) );	
-
+	
 	//If there is no input, return -1
 	if(cmd[0] == '\0') return -1;		
 
@@ -499,9 +116,9 @@ int CheckParameter(int cmd_num){
 	//Check that parameter according to com_num is valid
 	//If parameter is valid, return cmd_num
 	//else, return -1
-
+	
 	switch(cmd_num){
-
+		
 		//command without parameter
 		case H:
 		case D:
@@ -512,13 +129,13 @@ int CheckParameter(int cmd_num){
 		case SYMBOL:
 			if(par[0][0]=='\0')
 				return cmd_num;
-
+				 
 			PrintCmdERROR();	
 			return -1;
 			break;
 
 
-			//Check parameter of DUMP
+		//Check parameter of DUMP
 		case DU:
 			//If there is no parameter, return cmd_num
 			if(par[0][0] == '\0')
@@ -548,7 +165,7 @@ int CheckParameter(int cmd_num){
 			break;
 
 
-			//Check parameter of EDIT
+		//Check parameter of EDIT
 		case E:
 
 			//Check parameter format
@@ -564,7 +181,7 @@ int CheckParameter(int cmd_num){
 			break;
 
 
-			//Check parameter of FILL
+		//Check parameter of FILL
 		case F:
 			if(IsHex(par[0]) && par[1][0] ==',' && IsHex(par[2]) 
 					&& par[3][0] ==',' && IsHex(par[4]) && par[5][0]=='\0'){
@@ -579,9 +196,9 @@ int CheckParameter(int cmd_num){
 			return -1;
 			break;
 
-			//Check parameter of OPCODEMNEMONIC
+		//Check parameter of OPCODEMNEMONIC
 		case OPCODEMNEMONIC:
-
+			
 			//return -1 if no input
 			if(par[0][0]=='\0'){
 				printf("No input mnemonic\n");
@@ -591,12 +208,12 @@ int CheckParameter(int cmd_num){
 			//Check the parameter format
 			else if(par[1][0]=='\0')
 				return OPCODEMNEMONIC; 
-
+			
 			//Print error message and return -1 if parameter is invlaid
 			PrintCmdERROR();	
 			return -1;
 			break;
-
+		
 		case ASSEMBLE:
 			if(par[0][0]=='\0'){
 				printf("No input file name\n");
@@ -620,7 +237,7 @@ int CheckParameter(int cmd_num){
 			break;
 
 
-			//Print error message and return -1 if parameter is invlaid
+		//Print error message and return -1 if parameter is invlaid
 		default:
 			PrintCmdERROR();	
 			return -1;
@@ -633,7 +250,7 @@ int CheckParameter(int cmd_num){
 int MakeHashTable(){
 	//Function to make Hash table
 	//It read "opcode.txt" and save information to opcode list
-
+	
 	FILE *fp=fopen("opcode.txt","r");	//file pointer
 	char in2[10],in3[5];			//input from "opcode.txt"
 	int in1;
@@ -660,7 +277,7 @@ int MakeHashTable(){
 void MakeOpcodeList(int opcode, char*mnemonic, char* mode){
 	// Make opcode node and Save opcode information using hashing
 	// Hash value : add up the ASCII code of mnemonic characters and modular 20
-
+	
 	int i;
 	int hash_val=0;
 	opcode_node* new = (opcode_node*)malloc(sizeof(opcode_node));	//Allocate memory for opcode node
@@ -691,9 +308,9 @@ void MakeOpcodeList(int opcode, char*mnemonic, char* mode){
 /*************** Save COMMAND History ***********/
 void AddHistory(){
 	//Save the command hisotry to history node
-
+	
 	his_node *new = (his_node*)malloc(sizeof(his_node));	//allocate memory for his_node
-
+	
 	//save command to history node
 	strcpy(new->data, command);		
 	new->next = NULL;
@@ -713,9 +330,9 @@ void AddHistory(){
 /*************** Memeory Free **************/
 void FreeHistory(){
 	//Memory free related to history node
-
+	
 	his_node *tmp_p,*del_p;
-
+	
 	if(his_head==NULL) return;
 	else{
 		tmp_p = his_head;	//find head node
@@ -731,7 +348,7 @@ void FreeHash(){
 	//Memroy free related to opcode node 
 
 	opcode_node *tmp_p, *del_p;
-
+	
 	for(int i=0 ;i<HASH_SIZE ; i++){	
 		tmp_p = hash[i].head;	//find head opcode_node linked to hash table
 		while(1){	//free opcode_node 
@@ -748,7 +365,7 @@ void FreeHash(){
 /****************** Help *****************/
 void Help(){
 	//Print all valid command
-
+	
 	printf("h[elp]\n"
 			"d[ir]\n"
 			"q[uit]\n"
@@ -768,7 +385,7 @@ void Help(){
 /***************** Dir *****************/
 int Dir(){
 	//Function to print file information in current directory
-
+	
 	struct dirent *dir_ent;		//directory entry pointer
 	struct stat dir_stat;		//directory 
 	DIR* dir_p = opendir("."); 	//directory pointer
@@ -778,7 +395,7 @@ int Dir(){
 	//read file information
 	while( ( dir_ent = readdir(dir_p) ) ){
 		stat(dir_ent->d_name, &dir_stat);
-
+		
 		//classify and print file
 		if(S_ISDIR(dir_stat.st_mode))
 			printf("%s/\n",dir_ent->d_name);
@@ -795,7 +412,7 @@ void History(){
 
 	his_node* hp;	//his_node pointer
 	int cnt=0;		//count the line number to print
-
+	
 	//no history
 	if(his_head==NULL) return;	
 
@@ -810,14 +427,14 @@ void History(){
 void Dump(){
 	//Function to process e and s
 	//and print data in memory form s to e
-
+	
 	int s=0, e=0;		//decimal value of start and end
 	char start[10], end[10];	//hex value of start and end
-
+	
 	//move the parameter to start and end
 	strcpy(start, par[0]);
 	strcpy(end, par[2]);
-
+	
 	//If no input about start, set s and e toprint 160 from last address
 	if(start[0] == '\0'){	
 
@@ -827,18 +444,18 @@ void Dump(){
 		else s = last_addr+1;
 		e = s+159;
 	}
-
+ 
 	//If exist input about start
 	else{
 		s = HexToDec(start); //get decimal value s from start
-
+		
 		//If only parameter about start, e is s+159
 		if(end[0]=='\0') 
 			e = s+159; 
-
+		
 		else	e = HexToDec(end); //get decimal value e from end
 	}
-
+	
 	//If e is excced the MAX_MEMROY, reset e
 	if(e>= MAX_MEMORY){
 		e = MAX_MEMORY-1;
@@ -853,12 +470,12 @@ void Dump(){
 
 void PrintData(int s,int e){
 	//Function to print according to format the data in memory(mem) at address(addr)
-
+	
 	int i,j;
 
 	//print from s to e
 	for(i=s ;i<=e; i++){
-
+		
 		//if i is start index print data 
 		if(i==s){
 			printf("%05X ",i);
@@ -866,9 +483,9 @@ void PrintData(int s,int e){
 				for(j=0 ;j<i%16 ; j++)
 					printf("   ");
 			}
-
+			
 			printf("%02X ",HexToDec(mem[i]));
-
+			
 			if(i%16==15) PrintASCII(s,e,i-i%16);
 			continue;
 		}
@@ -876,7 +493,7 @@ void PrintData(int s,int e){
 		//print data
 		if(i%16==0)	printf("%05X ",i);
 		printf("%02X ",HexToDec(mem[i]));
-
+		
 		if(i%16==15) PrintASCII(s,e,i-i%16);
 	}
 
@@ -1056,7 +673,7 @@ int IsHex( char *ckstr ){
 	//Check that the string(ckstr) is Hexadecimal
 	//if ckstr is Hexadecimal, return 1
 	//if not, return 0
-
+	
 	int i;
 
 	//Check that ckstr is empty
@@ -1076,7 +693,7 @@ int IsHex( char *ckstr ){
 
 void PrintCmdERROR(){
 	//Function to print error message about invalid command
-
+	
 	printf("Unknown Command!\n");
 }
 
@@ -1085,7 +702,7 @@ int IsDataLimitERROR(int data){
 	//function to check data limit
 	//if data exceed limit(0x00 ~ 0xff), then return 1
 	//if not, return 0
-
+	
 	if(data<MAX_DATA)
 		return 0;
 	else{
@@ -1098,7 +715,7 @@ int IsAddrERROR(int s, int e){
 	//Function to check start address and end address
 	//If s is bigger than e, then return 1
 	//If not, return 0
-
+	
 	if( e < s){
 		printf("End address shouldn't be less than Start address!\n");
 		return 1;
@@ -1110,7 +727,7 @@ int IsAddrLimitERROR(int addr){
 	//function to check adrress limit
 	//if adddr exceed limit(0x00000 ~ 0xfffff), then return 1
 	//if not, return 0
-
+	
 	if(addr < MAX_MEMORY)
 		return 0;
 	else{

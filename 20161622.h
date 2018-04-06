@@ -30,7 +30,9 @@
 #define HASH_SIZE 20		//hash size
 #define HASH_MOD 20			//modular to get modual value
 
-
+#define MAX_LINESIZE 40
+#define MAX_ASM_TOKEN 7
+#define PRINT_ERROR( line , c ) printf("line %d ERROR:: %s\n",line,c) 
 //enum about valid command
 enum COMMANDTYPE {
 	H = 0,
@@ -71,8 +73,67 @@ char command_list[13][2][15]={
 	{"symbol","symbol"}
 };
 
+/****/
 
+enum PSEUDO_INSTR_TYPE{
+	START = 0,
+	END,
+	BYTE,
+	WORD,
+	RESB,
+	RESW
+};
 
+char pseudo_instr[7][10]={
+	"START","END","BYTE","WORD","RESB","RESW"
+};
+
+typedef struct AssemNode{
+	int form;
+	int line;
+	int loc;
+	int type;
+	int opcode;
+	char comment[55];
+	char sym[12];
+	char inst[12];
+	char operand1[12];
+	char operand2[12];
+	struct AssemNode *next;
+}assem_node;
+
+assem_node *assem_head = NULL;
+assem_node *assem_rear = NULL;
+
+/**symbol**/
+typedef struct SymbolNode{
+	char sym[12];
+	int loc;
+	struct SymbolNode *next;
+} symbol_node;
+
+symbol_node* sym_head = NULL;
+symbol_node* sym_rear = NULL;
+
+////////////////////
+//int ReadAssemFile();
+void InitAssemNode();
+int MakeAssemNode(char tkstr[][MAX_LINESIZE]);
+//
+
+char* FindForm(char* key);
+int StrToDec(char*str);
+int FindPseudoInstr(char* key);
+int FindOpcode(char* key);
+int Assemble(char *file_name);
+int Type(char *file_name);
+int IsAssemFile(char *file_name);
+
+int AssemPass1(char *file_name);
+int AssemToken(char *asm_line, char tk_str[][MAX_LINESIZE]);
+/////////////////////
+
+//int AssemToken(char *asm_line, char **tk_str);
 /**node to save History**/
 typedef struct HistoryNode{
 	char data[COMMANDSIZE];
@@ -86,7 +147,7 @@ his_node* his_rear = NULL;
 /*Node to save OpcodeList using hash table*/
 typedef struct OpcodeNode{
 	struct OpcodeNode* next;
-	char opcode[5];
+	int opcode;
 	char mnemonic[10];
 	char form[5];
 }opcode_node;
@@ -135,7 +196,7 @@ int CheckParameter(int cmd_num);
 
 /*Function to Make Opcode list using hash table*/
 int MakeHashTable();
-void MakeOpcodeList(char* opcode, char* mnemonic, char* mode);
+void MakeOpcodeList(int opcode, char* mnemonic, char* mode);
 
 
 /*Function to print according to format data in memory*/
