@@ -74,7 +74,13 @@ char command_list[13][2][15]={
 };
 
 /****/
+enum ASSEM_TYPE{
+	ERROR = -1,
+	COMMENT = 0,
+	PSEUDO_INST = 1,
+	INST= 2
 
+};
 enum PSEUDO_INSTR_TYPE{
 	START = 0,
 	END,
@@ -85,20 +91,20 @@ enum PSEUDO_INSTR_TYPE{
 };
 
 char pseudo_instr[7][10]={
-	"START","END","BYTE","WORD","RESB","RESW"
+	"START","END","BASE","BYTE","WORD","RESB","RESW"
 };
 
+
 typedef struct AssemNode{
-	int form;
 	int line;
 	int loc;
 	int type;
+	int form;
 	int opcode;
 	char comment[55];
 	char sym[12];
 	char inst[12];
-	char operand1[12];
-	char operand2[12];
+	char operand[2][12];
 	struct AssemNode *next;
 }assem_node;
 
@@ -120,7 +126,7 @@ symbol_node* sym_rear = NULL;
 void InitAssemNode();
 int MakeAssemNode(char tkstr[][MAX_LINESIZE]);
 //
-
+int GetType_and_SaveInst(assem_node *new_node, char tk_str[][MAX_LINESIZE]);
 char* FindForm(char* key);
 int StrToDec(char*str);
 int FindPseudoInstr(char* key);
@@ -128,6 +134,9 @@ int FindOpcode(char* key);
 int Assemble(char *file_name);
 int Type(char *file_name);
 int IsAssemFile(char *file_name);
+
+int GetOperand(assem_node *new_node, char tk_str[][MAX_LINESIZE]);
+int GetPseudoOperand(assem_node *new_node, char tk_str[][MAX_LINESIZE]);
 
 int AssemPass1(char *file_name);
 int AssemToken(char *asm_line, char tk_str[][MAX_LINESIZE]);
