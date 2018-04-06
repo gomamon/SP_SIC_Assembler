@@ -84,27 +84,40 @@ enum ASSEM_TYPE{
 enum PSEUDO_INSTR_TYPE{
 	START = 0,
 	END,
+	BASE,
 	BYTE,
 	WORD,
 	RESB,
 	RESW
 };
 
+enum ADDRESS_MODE{
+	SIC = 0,
+	IMMED = 1,
+	INDIR,
+	SIMPLE
+};
+
 char pseudo_instr[7][10]={
 	"START","END","BASE","BYTE","WORD","RESB","RESW"
 };
-
+int pc_addr=0,base_addr=0;
 
 typedef struct AssemNode{
 	int line;
 	int loc;
+
 	int type;
 	int form;
+
+	int addr_mode;
+
 	int opcode;
 	char comment[55];
 	char sym[12];
 	char inst[12];
 	char operand[2][12];
+	
 	struct AssemNode *next;
 }assem_node;
 
@@ -118,14 +131,19 @@ typedef struct SymbolNode{
 	struct SymbolNode *next;
 } symbol_node;
 
-symbol_node* sym_head = NULL;
-symbol_node* sym_rear = NULL;
+
+typedef struct SymbolTableNode{
+	char alpha;
+	struct SymbolNode *next;
+} symbol_table_node;
+
+symbol_table_node symbol_table[26];
 
 ////////////////////
-//int ReadAssemFile();
+
 void InitAssemNode();
 int MakeAssemNode(char tkstr[][MAX_LINESIZE]);
-//
+
 int GetType_and_SaveInst(assem_node *new_node, char tk_str[][MAX_LINESIZE]);
 char* FindForm(char* key);
 int StrToDec(char*str);
@@ -134,12 +152,13 @@ int FindOpcode(char* key);
 int Assemble(char *file_name);
 int Type(char *file_name);
 int IsAssemFile(char *file_name);
-
+int MakeSymbolTable(assem_node *new_node);
 int GetOperand(assem_node *new_node, char tk_str[][MAX_LINESIZE]);
 int GetPseudoOperand(assem_node *new_node, char tk_str[][MAX_LINESIZE]);
-
+void InitSymbolTable();
 int AssemPass1(char *file_name);
 int AssemToken(char *asm_line, char tk_str[][MAX_LINESIZE]);
+int SearchSymbol();
 /////////////////////
 
 //int AssemToken(char *asm_line, char **tk_str);
