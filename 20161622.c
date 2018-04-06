@@ -136,25 +136,12 @@ int AssemPass1(char* file_name){
 	char tk_str[MAX_ASM_TOKEN][MAX_LINESIZE] = {'\0'};
 	int location;
 	int pc;
-	
+
 	InitSymbolTable();
 	while(fgets(asm_line,MAX_LINESIZE,fp)!=NULL){
 		AssemToken(asm_line, tk_str);
-		printf("%s | %s | %s | %s \n",tk_str[0],tk_str[1],tk_str[2],tk_str[3]);
 		MakeAssemNode(tk_str);
-		/*
-		if(!strcpy(tk_str[1], "START")){
-		   location  = HexToDec(tk_str[2]);
 
-		   if (location == -1){
-		   printf("line %d ERROR: start address is not valid", assem_rear->line);
-		   }
-		   continue;
-		//write listing line
-		}
-		else
-		location = 0;
-		*/
 	}
 
 }
@@ -183,13 +170,15 @@ int AssemToken(char asm_line[], char tk_str[][MAX_LINESIZE]){
 		}
 		asm_str[j++]=asm_line[i++];
 	}
-	
+	asm_str[j] = '\0';
 	for(i=0; i<MAX_ASM_TOKEN; i++){
 		tk_str[i][0] = '\0';
 	}
 
 	i=0;
+
 	tk = strtok(asm_str, " \t\n");
+	if(tk==NULL) return 0;
 	do{
 		strcpy(tk_str[i],tk);
 
@@ -226,7 +215,25 @@ int MakeAssemNode(char tk_str[][MAX_LINESIZE]){
 
 
 
-	//link node
+	type=GetType_and_SaveInst(new_node,tk_str);
+//	if(MakeSymbolTable(new_node)==ERROR) return ERROR;
+	
+	switch(type){
+		case INST:
+			if(GetOperand(new_node,tk_str) == ERROR) return ERROR;
+			break;
+		case PSEUDO_INST:
+			if(GetPseudoOperand(new_node,tk_str)==ERROR) return ERROR;
+			break;
+		default:
+			return type;
+			break;
+	}	//link node
+
+	GetLoc(new_node);
+
+//	printf("%d	%04X	%s %d\n",new_node->line,new_node->loc, new_node->inst,new_node->form);//Debug
+
 	if(assem_head==NULL){
 		assem_rear = new_node;
 		assem_head = new_node;
@@ -235,30 +242,73 @@ int MakeAssemNode(char tk_str[][MAX_LINESIZE]){
 		assem_rear->next = new_node;
 		assem_rear = new_node;
 	}
-	type=GetType_and_SaveInst(new_node,tk_str);
-	if(MakeSymbolTable(new_node)==ERROR) return ERROR;
-	switch(type){
-		case INST:
-			return (GetOperand(new_node,tk_str)==ERROR) ? ERROR : INST;
-			break;
-		case PSEUDO_INST:
-			return (GetPseudoOperand(new_node,tk_str)==ERROR) ? ERROR : PSEUDO_INST;
-			break;
-		default:
-			return type;
-			break;
+}
+int StrToDec(char* str){
+	int i=0;
+	int dec=0;
+	if(str[0] == '\0'){
+		return -1;
+	}
+	for(i=0 ; i<strlen(str); i++){
+		dec *= 10;
+		dec += str[i]-'0';
+	}
+	return dec;
+}
+void GetLoc(assem_node *new_node){
+	int bef_loc;
+	if(assem_rear == NULL)
+		new_node->loc = 0;
+	else{
+		 bef_loc = assem_rear -> loc;;
+		switch(assem_rear->type){
+			case COMMENT:
+				new_node->loc = bef_loc;
+				break;
+			case PSEUDO_INST:
+				switch(FindPseudoInstr(assem_rear->inst)){
+					case START:
+					case BASE:
+						new_node->loc = bef_loc;
+						break;
+					case BYTE:
+						if(assem_rear->operand[0][0] == 'X')
+							new_node->loc = bef_loc + (HexToDec(assem_rear->operand[1])/ 256 )+ 1;
+						else if(assem_rear->operand[0][0] == 'C')
+							new_node->loc = bef_loc + strlen(assem_rear->operand[1]);
+						break;
+					case WORD:
+						new_node->loc = bef_loc + 3;
+						break;
+					case RESB:
+						printf("hh");
+						new_node->loc = bef_loc + StrToDec(assem_rear->operand[0]);
+						break;
+					case RESW:
+						printf("hh");
+						new_node->loc  = bef_loc + 3*StrToDec(assem_rear->operand[0]);
+						break;
+				}
+				break;
+
+			case INST:
+				new_node->loc = bef_loc + assem_rear -> form;
+				break;
+				
+		}
 	}
 }
+
 int MakeSymbolTable(assem_node *new_node){
 	symbol_node *cur,*bef;
 	symbol_node *new_sym;
 	int start_flag=1;
 	int i=0;
-	if( !strcpy(new_node->sym, "\0") ) return 0;	
+	if( !strcmp(new_node->sym, "\0") ) return 0;	
 	
 	new_sym = (symbol_node*)malloc(sizeof(symbol_node));
 	strcpy( new_sym -> sym , new_node->sym);
-	new_sym -> loc=  new_node -> loc;
+	new_sym -> loc =  new_node -> loc;
 		
 	if(symbol_table[ (new_node->sym)[0]].next == NULL )
 		symbol_table[(new_node->sym)[0]].next = new_sym;
@@ -271,7 +321,7 @@ int MakeSymbolTable(assem_node *new_node){
 			if(new_sym->sym[i]=='\0' && cur->sym[i]=='\0')
 				return ERROR;
 			
-			if( new_sym->sym[i] < cur->sym[i]){
+			if( new_sym->sym[i] > cur->sym[i]){
 				if(start_flag) {
 					bef = new_sym;
 					new_sym->next = cur;
@@ -285,7 +335,6 @@ int MakeSymbolTable(assem_node *new_node){
 			
 			else if( new_sym->sym[i]== cur->sym[i] ){
 				i++;
-
 			}
 			else{
 				bef = cur;
@@ -312,29 +361,76 @@ int SearchSymbol(char *key){
 }
 
 int GetPseudoOperand(assem_node *new_node, char tk_str[][MAX_LINESIZE]){
+	int i;
 	int is_sym = (!strcmp(new_node->sym , "\0")) ? 0 : 1;
+	
 	switch(FindPseudoInstr(new_node->inst)){
 		case START:
 			if(IsHex(tk_str[1+is_sym])){
 				pc_addr = HexToDec(tk_str[1+is_sym]);
 				strcpy( new_node -> operand[0] , tk_str[1+is_sym]);
+				return 0;
 			}
 			else{
 				PRINT_ERROR(new_node->line, "Incorrect format!");
-				return -1;
+				return ERROR;
 			}
 			break;
 		case END:
+			if(!strcmp(tk_str[2+is_sym],"\0") ){
+				strcpy(new_node -> operand[0], tk_str[1+is_sym]);	
+				return 0;
+			}
+			else {
+				PRINT_ERROR(new_node->line, "1Incorrect format!");
+				return ERROR;
+			}
 			break;
-		case BASE:
+		case BASE:			
+			if(!strcmp(tk_str[2+is_sym],"\0") ){
+				strcpy(new_node -> operand[0], tk_str[1+is_sym]);	
+				return 0;
+			}
 			break;
 		case BYTE:
-			break;
 		case WORD:
-			break;
+			if((tk_str[1+is_sym][0]=='X' ||tk_str[1+is_sym][0]=='C')
+					&& tk_str[1+is_sym][strlen(tk_str[1+is_sym]) - 1] == '\'' 
+						&& (tk_str[1+is_sym][1]=='\'')){
+
+				new_node -> operand[0][0] = tk_str[1+is_sym][0];
+				tk_str[1+is_sym][strlen(tk_str[1+is_sym]) - 1] = '\0'; 
+				strcpy((new_node -> operand[1]), &tk_str[1+is_sym][2]);
+
+				if(tk_str[1+is_sym][0]=='X' && !IsHex(new_node->operand[1])){ 
+					PRINT_ERROR(new_node->line, "data type error!");
+					return ERROR;
+				}
+				return 0;
+			}
+			else if((tk_str[1+is_sym])){
+				for( i=0; i<strlen(tk_str[1+is_sym]); i++){
+					if(tk_str[1+is_sym][i]<'0' || tk_str[1+is_sym][i]>'9'){
+						PRINT_ERROR(new_node->line, "Incorrect format!");
+						return ERROR;
+					}
+				}
+				strcpy(new_node ->operand[0] , tk_str[1+is_sym]);
+				return 0;
+			}
+			else{
+				PRINT_ERROR(new_node->line, "Incorrect format!");
+				return ERROR;
+			}
 		case RESB:
-			break;
 		case RESW:
+			for( i=0; i<strlen(tk_str[1+is_sym]); i++){
+				if(tk_str[1+is_sym][i]<'0' || tk_str[1+is_sym][i]>'9'){
+					PRINT_ERROR(new_node->line, "Incorrect format!");
+					return ERROR;
+				}
+			}
+			strcpy( new_node->operand[0] ,tk_str[1+is_sym]);
 			break;
 	}
 }
@@ -345,11 +441,13 @@ int IsReg(char *c){
 		if(!strcmp(c, reg[i]) ){
 			return 1;
 		}
+
 	}
 	return 0;
 }
 
 int GetOperand(assem_node *new_node, char tk_str[][MAX_LINESIZE]){
+
 	int i,j;
 	int is_sym = (!strcmp(new_node->sym , "\0")) ? 0 : 1;
 	char oper2_except[4][3][10] = {
@@ -358,7 +456,7 @@ int GetOperand(assem_node *new_node, char tk_str[][MAX_LINESIZE]){
 		{"SHIFTL", "SHIFTR"}//r1, n
 	};
 
-
+	printf("sym : %d\n", is_sym);
 	switch(new_node->form){
 		case 1:
 			if(strcmp(tk_str[1 + is_sym],"\0")){
@@ -451,7 +549,6 @@ int GetOperand(assem_node *new_node, char tk_str[][MAX_LINESIZE]){
 			break;
 	}
 }
-
 int GetType_and_SaveInst(assem_node *new_node, char tk_str[][MAX_LINESIZE]){
 	//comment	
 	int opcode[3];
@@ -464,6 +561,7 @@ int GetType_and_SaveInst(assem_node *new_node, char tk_str[][MAX_LINESIZE]){
 		return COMMENT;
 	}
 	
+	//printf("%s | %s | %s | %s \n",tk_str[0],tk_str[1],tk_str[2],tk_str[3]);
 	//save symbol, instruction, opcode in format 4;
 	for(i=0; i<2; i++){
 		if(tk_str[i][0]=='+') {
@@ -474,7 +572,7 @@ int GetType_and_SaveInst(assem_node *new_node, char tk_str[][MAX_LINESIZE]){
 					new_node->opcode = opcode[3];
 					strcpy(new_node->inst , &tk_str[i][1]);
 					if(i==1){
-						strcpy(new_node->sym, &tk_str[i][1]);
+						strcpy(new_node->sym, &tk_str[0][1]);
 					}
 					new_node->type = INST;
 					return INST;
@@ -492,6 +590,7 @@ int GetType_and_SaveInst(assem_node *new_node, char tk_str[][MAX_LINESIZE]){
 	for(int i=0; i<2; i++){
 		opcode[i] = FindOpcode(tk_str[i]);
 		pseudo[i] = FindPseudoInstr(tk_str[i]);
+	//	printf("%d ||op:%d pse: %d \n",i,opcode[i],pseudo[i]);
 	}	
 	
 	//process error
@@ -528,9 +627,6 @@ int GetType_and_SaveInst(assem_node *new_node, char tk_str[][MAX_LINESIZE]){
 int FindOpcode(char* key){	
 	opcode_node* tmp;	// opcode_list pointer for searching
 	int hash_val=0,i;		// idx: hash table index, i:index
-
-	strcpy(key, par[0]);	//key get mnemonic to find
-
 	//get hash value
 	for( i=0; i<(int)strlen(key) ; i++)	
 		hash_val += key[i];
@@ -565,7 +661,7 @@ char* FindForm(char* key){
 }
 int FindPseudoInstr(char* key){
 	int i;	
-	for(i=0; i < 6; i++){
+	for(i=0; i < 7; i++){
 		if(!strcmp(key, pseudo_instr[i]))
 			return i;
 	}

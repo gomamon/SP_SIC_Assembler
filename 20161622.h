@@ -30,7 +30,7 @@
 #define HASH_SIZE 20		//hash size
 #define HASH_MOD 20			//modular to get modual value
 
-#define MAX_LINESIZE 40
+#define MAX_LINESIZE 120
 #define MAX_ASM_TOKEN 7
 #define PRINT_ERROR( line , c ) printf("line %d ERROR:: %s\n",line,c) 
 //enum about valid command
@@ -145,10 +145,14 @@ void InitAssemNode();
 int MakeAssemNode(char tkstr[][MAX_LINESIZE]);
 
 int GetType_and_SaveInst(assem_node *new_node, char tk_str[][MAX_LINESIZE]);
+
 char* FindForm(char* key);
-int StrToDec(char*str);
 int FindPseudoInstr(char* key);
+
+void GetLoc(assem_node *new_node);
+int StrToDec(char* str);
 int FindOpcode(char* key);
+
 int Assemble(char *file_name);
 int Type(char *file_name);
 int IsAssemFile(char *file_name);
