@@ -31,6 +31,7 @@
 #define HASH_MOD 20			//modular to get modual value
 
 #define MAX_LINESIZE 120
+#define MAX_FILENAME 55
 #define MAX_ASM_TOKEN 7
 #define PRINT_ERROR( line , c ) printf("line %d ERROR:: %s\n",line,c) 
 //enum about valid command
@@ -140,7 +141,8 @@ typedef struct SymbolTableNode{
 symbol_table_node symbol_table[26];
 
 ////////////////////
-
+int Symbol();
+int AssemPass2(char* file_name);
 void InitAssemNode();
 int MakeAssemNode(char tkstr[][MAX_LINESIZE]);
 
@@ -152,6 +154,7 @@ int FindPseudoInstr(char* key);
 void GetLoc(assem_node *new_node);
 int StrToDec(char* str);
 int FindOpcode(char* key);
+int GetObj(assem_node *cur_node);
 
 int Assemble(char *file_name);
 int Type(char *file_name);

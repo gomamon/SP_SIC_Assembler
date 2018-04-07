@@ -77,11 +77,26 @@ int main(){
 				Type(par[0]);
 				break;
 			case SYMBOL:
+				Symbol();
 				break;
 		}
 	}
 }
 
+int Symbol(){
+	int i;
+	symbol_node* cur;
+	if(assem_head==NULL){
+		printf("A file recently assembled doesn't exist!\n");
+		return -1;
+	}
+	for(int i='Z'-'A' ; i>=0; i--){
+		for(cur = symbol_table[i].next ; cur!=NULL; cur = cur->next){
+			printf("\t%s\t%04X\n",cur->sym,cur->loc);
+		}
+	}
+	return 0;
+}
 
 int IsAssemFile(char *file_name){
 	// Check that file type is '.asm' 
@@ -90,7 +105,7 @@ int IsAssemFile(char *file_name){
 	int i;
 	int check_asm=0;
 
-	for(i=0 ; i< strlen(file_name) ; i++){
+	for(i=0 ; i< (int)strlen(file_name) ; i++){
 		if(par[0][i]=='.'){
 			if(strlen(file_name)-i == 4){
 				if(file_name[i+1]=='a' && file_name[i+2]=='s' && file_name[i+3]=='m') return 1;
@@ -115,18 +130,97 @@ int Assemble(char *file_name){
 		printf("%s is not .asm file\n", file_name);
 		return -1;
 	}
+	
 	fp = fopen(par[0], "r");
+	
 	if(fp==NULL){
 		printf("%s not founded\n",file_name);
+		return -1;
 	}
+
 	fclose(fp);
 
 	//InitAssemNode();
 	InitAssemNode();
+	InitSymbolTable();
 
-	if(AssemPass1(file_name)==-1) return -1;
+	if(AssemPass1(file_name)==-1){
+		InitAssemNode();
+		InitSymbolTable();
+		return -1;
+	}
+
+	if(AssemPass2(file_name)==-1){
+		InitAssemNode();
+		InitSymbolTable();
+		return -1;
+	}
+
+	return 0;
+
+}
 
 
+int AssemPass2(char* file_name){
+	FILE *fp = fopen(file_name, "r");
+	FILE *list;
+	FILE *object;
+	char list_name[MAX_FILENAME]; 
+	char object_name[MAX_FILENAME];
+	char asm_line[MAX_LINESIZE];
+	int i;
+	assem_node* cur = assem_head;
+	
+	for(i=0 ; i<(int)strlen(file_name); i++){
+		if(file_name[i] == '.')
+			break;
+		list_name[i] = file_name[i];
+		object_name[i] = file_name[i];
+	}
+	strcat(list_name, ".lst");
+	strcat(object_name, ".obj");
+
+	if(!strcmp(cur->inst,"START") && strcmp(cur->sym,"\0") ){ 
+		list = fopen(list_name,"w");
+		object = fopen(object_name,"w");
+		cur=cur->next;
+		if(fgets(asm_line,MAX_LINESIZE,fp) == NULL) return 0;
+	}
+	
+
+	while(fgets(asm_line,MAX_LINESIZE,fp) != NULL || cur==NULL ){
+		if(asm_line[(int)strlen(asm_line)-1]='\n')
+			asm_line[(int)strlen(asm_line)-1]='\0';
+		if(cur->type == COMMENT)
+			printf("%d\t%s\n",cur->line,asm_line);
+		else if(!strcmp(cur->inst,"BASE"))
+			printf("%d\t\t%s\n",cur->line,asm_line);
+		else{
+			printf("%d\t%04X\t%s\n",cur->line,cur->loc,asm_line);
+			if( !strcmp(cur->sym,"END"))break;
+			GetObj(cur);	
+
+
+
+		}
+
+		cur = cur->next;
+	}
+
+
+	fclose(fp);
+	fclose(list);
+	fclose(object);
+	
+}
+
+int GetObj(assem_node *cur_node){
+	if(cur_node->type == PSEUDO_INST){
+		
+	}
+	else if(cur_node->type == INST){
+
+	}
 }
 
 int AssemPass1(char* file_name){
@@ -139,10 +233,16 @@ int AssemPass1(char* file_name){
 
 	InitSymbolTable();
 	while(fgets(asm_line,MAX_LINESIZE,fp)!=NULL){
+		
 		AssemToken(asm_line, tk_str);
-		MakeAssemNode(tk_str);
+
+		if (MakeAssemNode(tk_str) ) return ERROR;
+		
+		if(FindPseudoInstr(assem_rear->inst) == END) break;
 
 	}
+//	PrintList(asm_line);//DD
+	fclose(fp);
 
 }
 void InitSymbolTable(){
@@ -160,7 +260,7 @@ int AssemToken(char asm_line[], char tk_str[][MAX_LINESIZE]){
 	char asm_str[MAX_LINESIZE] = {'\0'};
 
 
-	for(i=0; i < strlen(asm_line) ;){
+	for(i=0; i < (int)strlen(asm_line) ;){
 		if(asm_line[i]==','){
 			i++;
 			asm_str[j++] = ' ';
@@ -209,14 +309,15 @@ int MakeAssemNode(char tk_str[][MAX_LINESIZE]){
 	strcpy(new_node->comment, "\0");
 	strcpy(new_node->sym, "\0");
 	strcpy(new_node->inst, "\0");
+	strcpy(new_node->operand[0], "\0");
+	strcpy(new_node->operand[1], "\0");
+	
 	new_node->next = NULL;
 	new_node->type = -1;
+	
 	new_node->line = (assem_rear==NULL) ?  5 : ( (assem_rear->line) + 5 );
 
-
-
 	type=GetType_and_SaveInst(new_node,tk_str);
-//	if(MakeSymbolTable(new_node)==ERROR) return ERROR;
 	
 	switch(type){
 		case INST:
@@ -225,14 +326,15 @@ int MakeAssemNode(char tk_str[][MAX_LINESIZE]){
 		case PSEUDO_INST:
 			if(GetPseudoOperand(new_node,tk_str)==ERROR) return ERROR;
 			break;
+		case COMMENT:
+			break;
 		default:
-			return type;
+			return ERROR;
 			break;
 	}	//link node
 
 	GetLoc(new_node);
-
-//	printf("%d	%04X	%s %d\n",new_node->line,new_node->loc, new_node->inst,new_node->form);//Debug
+	if(MakeSymbolTable(new_node)==ERROR) return ERROR;
 
 	if(assem_head==NULL){
 		assem_rear = new_node;
@@ -242,6 +344,7 @@ int MakeAssemNode(char tk_str[][MAX_LINESIZE]){
 		assem_rear->next = new_node;
 		assem_rear = new_node;
 	}
+	return 0;
 }
 int StrToDec(char* str){
 	int i=0;
@@ -249,7 +352,7 @@ int StrToDec(char* str){
 	if(str[0] == '\0'){
 		return -1;
 	}
-	for(i=0 ; i<strlen(str); i++){
+	for(i=0 ; i<(int)strlen(str); i++){
 		dec *= 10;
 		dec += str[i]-'0';
 	}
@@ -257,8 +360,9 @@ int StrToDec(char* str){
 }
 void GetLoc(assem_node *new_node){
 	int bef_loc;
-	if(assem_rear == NULL)
-		new_node->loc = 0;
+	if(assem_rear == NULL){
+		new_node->loc = pc_addr;
+	}
 	else{
 		 bef_loc = assem_rear -> loc;;
 		switch(assem_rear->type){
@@ -281,11 +385,9 @@ void GetLoc(assem_node *new_node){
 						new_node->loc = bef_loc + 3;
 						break;
 					case RESB:
-						printf("hh");
 						new_node->loc = bef_loc + StrToDec(assem_rear->operand[0]);
 						break;
 					case RESW:
-						printf("hh");
 						new_node->loc  = bef_loc + 3*StrToDec(assem_rear->operand[0]);
 						break;
 				}
@@ -304,60 +406,66 @@ int MakeSymbolTable(assem_node *new_node){
 	symbol_node *new_sym;
 	int start_flag=1;
 	int i=0;
-	if( !strcmp(new_node->sym, "\0") ) return 0;	
-	
+
+	if( !strcmp(new_node->sym, "\0") )	return 0;	
+	else if( !strcmp(new_node->inst,"start") )return 0;
+
 	new_sym = (symbol_node*)malloc(sizeof(symbol_node));
 	strcpy( new_sym -> sym , new_node->sym);
 	new_sym -> loc =  new_node -> loc;
 		
-	if(symbol_table[ (new_node->sym)[0]].next == NULL )
-		symbol_table[(new_node->sym)[0]].next = new_sym;
-
-	if(!SearchSymbol( new_node->sym)){
-
-		bef = symbol_table[ (new_node->sym)[0]].next; 
-		for(cur = symbol_table[ (new_node->sym)[0] ].next; cur!=NULL; ){
-			
-			if(new_sym->sym[i]=='\0' && cur->sym[i]=='\0')
-				return ERROR;
-			
-			if( new_sym->sym[i] > cur->sym[i]){
-				if(start_flag) {
-					bef = new_sym;
-					new_sym->next = cur;
-				}
-				else {
-					bef->next = new_sym;
-					new_sym->next = cur;
-				}
-				break;
-			}
-			
-			else if( new_sym->sym[i]== cur->sym[i] ){
-				i++;
-			}
-			else{
-				bef = cur;
-				cur = cur->next;
-			}
-			start_flag = 1;
-		}
+	if(symbol_table[ (new_node->sym[0]) - 'A' ].next == NULL ){
+		symbol_table[ ((new_node->sym)[0]) - 'A' ].next = new_sym;
+		return 0;
 	}
+
+
+	//check 
+	if(SearchSymbol( new_node->sym)==-1){
+		PRINT_ERROR(new_node->line , "Overlap symbols");
+		return ERROR;
+	}
+
+	bef = symbol_table[ (new_node->sym)[0] - 'A' ].next; 
+	for(cur = symbol_table[ (new_node->sym)[0] - 'A' ].next; cur!=NULL; ){
+			
+		if( new_sym->sym[i] > cur->sym[i]){
+			if(start_flag) {
+				bef = new_sym;
+				new_sym->next = cur;
+			}
+			else {					
+				bef->next = new_sym;
+				new_sym->next = cur;
+			}
+			break;
+		}
+			
+		else if( new_sym->sym[i]== cur->sym[i] ){				
+			i++;
+		}
+		else{
+			bef = cur;
+			cur = cur->next;
+		}
+		start_flag = 1;
+	}
+	return 0;	
 }
 
 int SearchSymbol(char *key){
-	//Find : 1
-	//unfind : 0	
+	//Find : return addr
+	//unfind : -1
 	symbol_node *cur;
 
-	if(symbol_table[ key[0] ].next==NULL)
-		return 0;
+	if(symbol_table[ key[0]-'A'].next==NULL)
+		return -1;
 
-	for(cur = symbol_table[ key[0] ].next; cur!=NULL; ){
-		if(!strcmp(cur->sym, key))	return 1;
+	for(cur = symbol_table[ key[0]-'A' ].next; cur!=NULL; ){
+		if(!strcmp(cur->sym, key))	return cur->loc;
 		cur = cur->next;
 	}
-	return 0;
+	return -1;
 }
 
 int GetPseudoOperand(assem_node *new_node, char tk_str[][MAX_LINESIZE]){
@@ -409,7 +517,7 @@ int GetPseudoOperand(assem_node *new_node, char tk_str[][MAX_LINESIZE]){
 				return 0;
 			}
 			else if((tk_str[1+is_sym])){
-				for( i=0; i<strlen(tk_str[1+is_sym]); i++){
+				for( i=0; i<(int)strlen(tk_str[1+is_sym]); i++){
 					if(tk_str[1+is_sym][i]<'0' || tk_str[1+is_sym][i]>'9'){
 						PRINT_ERROR(new_node->line, "Incorrect format!");
 						return ERROR;
@@ -424,7 +532,7 @@ int GetPseudoOperand(assem_node *new_node, char tk_str[][MAX_LINESIZE]){
 			}
 		case RESB:
 		case RESW:
-			for( i=0; i<strlen(tk_str[1+is_sym]); i++){
+			for( i=0; i<(int)strlen(tk_str[1+is_sym]); i++){
 				if(tk_str[1+is_sym][i]<'0' || tk_str[1+is_sym][i]>'9'){
 					PRINT_ERROR(new_node->line, "Incorrect format!");
 					return ERROR;
@@ -441,7 +549,6 @@ int IsReg(char *c){
 		if(!strcmp(c, reg[i]) ){
 			return 1;
 		}
-
 	}
 	return 0;
 }
@@ -456,7 +563,6 @@ int GetOperand(assem_node *new_node, char tk_str[][MAX_LINESIZE]){
 		{"SHIFTL", "SHIFTR"}//r1, n
 	};
 
-	printf("sym : %d\n", is_sym);
 	switch(new_node->form){
 		case 1:
 			if(strcmp(tk_str[1 + is_sym],"\0")){
@@ -572,7 +678,7 @@ int GetType_and_SaveInst(assem_node *new_node, char tk_str[][MAX_LINESIZE]){
 					new_node->opcode = opcode[3];
 					strcpy(new_node->inst , &tk_str[i][1]);
 					if(i==1){
-						strcpy(new_node->sym, &tk_str[0][1]);
+						strcpy(new_node->sym, tk_str[0]);
 					}
 					new_node->type = INST;
 					return INST;
