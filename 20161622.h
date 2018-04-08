@@ -94,17 +94,7 @@ enum PSEUDO_INSTR_TYPE{
 	RESB,
 	RESW
 };
-enum REGISTER_{
-	REG_A=0,
-	REG_X,
-	REG_L,
-	REG_B,
-	REG_S,
-	REG_T,
-	REG_F,
-	REG_PC,
-	REG_SW
-};
+
 enum ADDRESS_MODE{
 	SIC = 0,
 	IMMED = 1,

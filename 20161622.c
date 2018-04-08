@@ -30,7 +30,6 @@ int main(){
 		//get input
 		printf("sicsim> ");
 		mode = Input();
-		printf("mode: %d\n",mode);
 		// execute the command according to mode
 		if(mode!=-1)	AddHistory();	// If input is valid, add command to history 
 
@@ -70,13 +69,13 @@ int main(){
 			case OPCODEMNEMONIC:	//execute OpcodeMnemonic
 				OpcodeMnemonic();
 				break;
-			case ASSEMBLE:
+			case ASSEMBLE:		//excute Assemble
 				Assemble(par[0]);
 				break;
-			case TYPE:
+			case TYPE:		//excute Type
 				Type(par[0]);
 				break;
-			case SYMBOL:
+			case SYMBOL:	//excute Symbol
 				Symbol();
 				break;
 		}
@@ -171,7 +170,7 @@ int AssemPass2(char* file_name){
 	char object_name[MAX_FILENAME];	//string for object file name
 	char asm_line[MAX_LINESIZE];	//string to get 1 line in .asm file
 	int i;	
-	int t_total,t_end_flag,t_next_loc; //t_total : count byte size to print to object file
+	int t_total=0,t_end_flag,t_next_loc; //t_total : count byte size to print to object file
 							//t_end_flag : line feed sign to print to object file
 	assem_node* tcnt;
 	assem_node* cur = assem_head;	//Pointer to point current assem_node.
@@ -194,7 +193,7 @@ int AssemPass2(char* file_name){
 		object = fopen(object_name,"w");
 		if(fgets(asm_line,MAX_LINESIZE,fp) == NULL) return 0;
 		fprintf(list,"%d\t%04X\t%s",cur->line,cur->loc,asm_line);
-		fprintf(object,"H%6s%6X%6X",cur->sym,assem_head->loc, (assem_rear->loc - assem_head->loc));
+		fprintf(object,"H%-6s%06X%06X",cur->sym,assem_head->loc, (assem_rear->loc - assem_head->loc));
 		cur=cur->next;
 	}
 	
@@ -229,7 +228,7 @@ int AssemPass2(char* file_name){
 			if( !strcmp(cur->inst,"END")){
 				cur->t_flag=1;
 
-				fprintf(list,"%d\t\t%-33s",cur->line,asm_line);
+				fprintf(list,"%d\t\t%-33s\n",cur->line,asm_line);
 				break;
 			}
 			fprintf(list,"%d\t%04X\t%-33s",cur->line,cur->loc,asm_line);
@@ -237,7 +236,9 @@ int AssemPass2(char* file_name){
 			//Get object code
 			//If it has error, return -1(ERROR)
 			if(GetObj(cur)==ERROR) return ERROR;
-		
+			if(t_total==0) {
+				cur->t_flag = 1;
+			}
 			//If current line has print object code
 			if(cur->size!=0){
 
@@ -246,19 +247,19 @@ int AssemPass2(char* file_name){
 				switch(cur->size){
 					case 1:
 						t_total+=1;
-						fprintf(list,"%02X\n",cur->obj);
+						fprintf(list,"%02X",cur->obj);
 						break;
 					case 2:
 						t_total+=2;
-						fprintf(list,"%04X\n",cur->obj);
+						fprintf(list,"%04X",cur->obj);
 						break;
 					case 3:
 						t_total+=3;
-						fprintf(list,"%06X\n",cur->obj);
+						fprintf(list,"%06X",cur->obj);
 						break;
 					case 4:
 						t_total+=4;
-						fprintf(list,"%08X\n",cur->obj);
+						fprintf(list,"%08X",cur->obj);
 						break;
 				}
 			}
@@ -276,47 +277,57 @@ int AssemPass2(char* file_name){
 				t_end_flag=1;
 				t_total = 0;
 			}
+			fprintf(list,"\n");
 		}
+
 		cur = cur->next;
 	}
 
-	//init current node
-/*if(cur->type == COMMENT)
-			fprintf(list,"%d\t%s\n",cur->line,asm_line);
-		else if(!strcmp(cur->inst,"BASE")){
-			base_addr = SearchSymbol(cur->operand[0]);
-			if(base_addr == -1){
-				PRINT_ERROR(cur->line,"Referenced an undeclared symbol!");
-				return -1;
-			}
-			fprintf(list,"%d\t\t%s\n",cur->line,asm_line);
-		}
-		else{
-			if( !strcmp(cur->inst,"END")){
-				fprintf(list,"%d\t\t%-33s",cur->line,asm_line);
-				break;
-			}*/
 	//Make .obj file using data in assem_node
 	for(cur = assem_head->next; cur!=NULL ;cur = cur->next){
 		if(!strcmp(cur->inst,"END")){
-			fprintf(object, "\nE%6X",assem_head->loc);
+			break;
 		}
 		if(cur->size==0){
 			continue;
 		}
 		if(cur->t_flag){
-			fprintf(object, "\nT%6X",cur->loc);
 			for(tcnt=cur->next;tcnt!=NULL; tcnt=tcnt->next){
 				if(tcnt->t_flag==1){
 					t_next_loc = tcnt->loc;
 					break;
 				}
 			}
+			fprintf(object, "\nT%06X%02X",cur->loc,t_next_loc - (cur->loc) );
 		}
 
-
-
+		switch(cur->size){
+			case 1:
+				fprintf(object,"%02X",cur->obj);
+				break;
+			case 2:
+				fprintf(object,"%04X",cur->obj);
+				break;
+			case 3:
+				fprintf(object,"%06X",cur->obj);
+				break;
+			case 4:
+				fprintf(object,"%08X",cur->obj);
+				break;
+		}
 	}
+	for(cur = assem_head->next; cur!=NULL ;cur = cur->next){
+		if(!strcmp(cur->inst,"END")){		
+			fprintf(object, "\nE%06X\n",assem_head->loc);
+			break;
+		}	
+		if(cur->form == 4 
+				&& ('0'>cur->operand[0][0]||cur->operand[0][0]>'9')){
+			fprintf(object, "\nM%06X%02X",(cur->loc)-(assem_head->loc)+1,5);
+		}
+		
+		
+	}	
 	fclose(fp);
 	fclose(list);
 	fclose(object);
