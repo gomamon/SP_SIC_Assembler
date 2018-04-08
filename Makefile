@@ -1,8 +1,8 @@
-20161622.out: 20161622.o SICShell.o #assembler.o
-	gcc -o 20161622.out 20161622.o SICShell.o
-20161622.o: 20161622.h 20161622.c
-	gcc -Wall -c 20161622.c
-SICShell.o: 20161622.h SICShell.c
-	gcc -Wall -c SICShell.c
+20161622.out: 20161622.o assembler.o 
+	gcc -o 20161622.out 20161622.o assembler.o
+20161622.o: 20161622.c 20161622.h main.h assembler.h 
+	gcc -Wall -c 20161622.c -o 20161622.o
+assembler.o: assembler.c assembler.h main.h 20161622.h 
+	gcc -Wall -c assembler.c -o assembler.o
 clean: 
-	rm 20161622.out 20161622.o shell.o
+	rm 20161622.out 20161622.o assembler.o
