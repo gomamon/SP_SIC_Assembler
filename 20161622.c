@@ -90,7 +90,7 @@ int Symbol(){
 		printf("A file recently assembled doesn't exist!\n");
 		return -1;
 	}
-	for(int i='Z'-'A' ; i>=0; i--){
+	for( i='Z'-'A' ; i>=0; i--){
 		for(cur = symbol_table[i].next ; cur!=NULL; cur = cur->next){
 			printf("\t%s\t%04X\n",cur->sym,cur->loc);
 		}
@@ -162,15 +162,21 @@ int Assemble(char *file_name){
 
 
 int AssemPass2(char* file_name){
-	FILE *fp = fopen(file_name, "r");
-	FILE *list;
-	FILE *object;
-	char list_name[MAX_FILENAME]; 
-	char object_name[MAX_FILENAME];
-	char asm_line[MAX_LINESIZE];
-	int i;
-	assem_node* cur = assem_head;
+	//Make .lst file and .obj
+	//
+	FILE *fp = fopen(file_name, "r");	//read .asm file 
+	FILE *list;		//FILE POINTER for .lst file
+	FILE *object;	//FILE POINTER for .obj file
+	char list_name[MAX_FILENAME];	//string for list file name
+	char object_name[MAX_FILENAME];	//string for object file name
+	char asm_line[MAX_LINESIZE];	//string to get 1 line in .asm file
+	int i;	
+	int t_total,t_end_flag,t_next_loc; //t_total : count byte size to print to object file
+							//t_end_flag : line feed sign to print to object file
+	assem_node* tcnt;
+	assem_node* cur = assem_head;	//Pointer to point current assem_node.
 	
+	//process file name to get list_name, object_name
 	for(i=0 ; i<(int)strlen(file_name); i++){
 		if(file_name[i] == '.')
 			break;
@@ -180,56 +186,315 @@ int AssemPass2(char* file_name){
 	strcat(list_name, ".lst");
 	strcat(object_name, ".obj");
 
-	if(!strcmp(cur->inst,"START") && strcmp(cur->sym,"\0") ){ 
+	//If '.asm' file is not emtpy or has "START" at first line,
+	//make list file and object file 
+	//and write first line data to list and obj. 
+	if(!strcmp(cur->inst,"START")||strcmp(cur->inst, "\0") ){ 
 		list = fopen(list_name,"w");
 		object = fopen(object_name,"w");
-		cur=cur->next;
 		if(fgets(asm_line,MAX_LINESIZE,fp) == NULL) return 0;
+		fprintf(list,"%d\t%04X\t%s",cur->line,cur->loc,asm_line);
+		fprintf(object,"H%6s%6X%6X",cur->sym,assem_head->loc, (assem_rear->loc - assem_head->loc));
+		cur=cur->next;
 	}
 	
-
+	// Read data one line in '.asm' file at a time 
+	// and write to '.lst'
 	while(fgets(asm_line,MAX_LINESIZE,fp) != NULL || cur==NULL ){
-		if(asm_line[(int)strlen(asm_line)-1]='\n')
+		if(asm_line[(int)strlen(asm_line)-1]=='\n')
 			asm_line[(int)strlen(asm_line)-1]='\0';
+
+		//process and write comment to list file
 		if(cur->type == COMMENT)
-			printf("%d\t%s\n",cur->line,asm_line);
-		else if(!strcmp(cur->inst,"BASE"))
-			printf("%d\t\t%s\n",cur->line,asm_line);
-		else{
-			printf("%d\t%04X\t%s\n",cur->line,cur->loc,asm_line);
-			if( !strcmp(cur->sym,"END"))break;
-			GetObj(cur);	
-
-
-
+			fprintf(list,"%d\t%s\n",cur->line,asm_line);
+		
+		//If instruction is base, set base address and print to list file
+		else if(!strcmp(cur->inst,"BASE")){
+			if(cur->operand[0][0]<='0' && cur->operand[0][0]>='9'){
+				base_addr = HexToDec(cur->operand[0]);
+			}
+			else{
+				base_addr = SearchSymbol(cur->operand[0]);
+				if(base_addr == -1){
+					PRINT_ERROR(cur->line,"Referenced an undeclared symbol!");
+					return -1;
+				}
+			}
+			fprintf(list,"%d\t\t%s\n",cur->line,asm_line);
 		}
 
+	
+		else{
+			//If instruction is "END", print to list file and break this loop
+			if( !strcmp(cur->inst,"END")){
+				cur->t_flag=1;
+
+				fprintf(list,"%d\t\t%-33s",cur->line,asm_line);
+				break;
+			}
+			fprintf(list,"%d\t%04X\t%-33s",cur->line,cur->loc,asm_line);
+			
+			//Get object code
+			//If it has error, return -1(ERROR)
+			if(GetObj(cur)==ERROR) return ERROR;
+		
+			//If current line has print object code
+			if(cur->size!=0){
+
+				//Add byte size to t_total to make object file
+				//Print object code to list file according to size of object code
+				switch(cur->size){
+					case 1:
+						t_total+=1;
+						fprintf(list,"%02X\n",cur->obj);
+						break;
+					case 2:
+						t_total+=2;
+						fprintf(list,"%04X\n",cur->obj);
+						break;
+					case 3:
+						t_total+=3;
+						fprintf(list,"%06X\n",cur->obj);
+						break;
+					case 4:
+						t_total+=4;
+						fprintf(list,"%08X\n",cur->obj);
+						break;
+				}
+			}
+
+			// To match the object file format(consider linesize, constant ),
+			// check t_flag  at the beginning of the line
+			if(t_end_flag==1 || t_total>OBJ_LINE_SIZE){
+				//consider line size
+				cur->t_flag = 1;
+				t_end_flag = 0;
+				t_total = cur->size;
+			}
+			else if(!strcmp(cur->inst,"BYTE")||!strcmp(cur->inst,"WORD")){
+				//consider constant
+				t_end_flag=1;
+				t_total = 0;
+			}
+		}
 		cur = cur->next;
 	}
 
+	//init current node
+/*if(cur->type == COMMENT)
+			fprintf(list,"%d\t%s\n",cur->line,asm_line);
+		else if(!strcmp(cur->inst,"BASE")){
+			base_addr = SearchSymbol(cur->operand[0]);
+			if(base_addr == -1){
+				PRINT_ERROR(cur->line,"Referenced an undeclared symbol!");
+				return -1;
+			}
+			fprintf(list,"%d\t\t%s\n",cur->line,asm_line);
+		}
+		else{
+			if( !strcmp(cur->inst,"END")){
+				fprintf(list,"%d\t\t%-33s",cur->line,asm_line);
+				break;
+			}*/
+	//Make .obj file using data in assem_node
+	for(cur = assem_head->next; cur!=NULL ;cur = cur->next){
+		if(!strcmp(cur->inst,"END")){
+			fprintf(object, "\nE%6X",assem_head->loc);
+		}
+		if(cur->size==0){
+			continue;
+		}
+		if(cur->t_flag){
+			fprintf(object, "\nT%6X",cur->loc);
+			for(tcnt=cur->next;tcnt!=NULL; tcnt=tcnt->next){
+				if(tcnt->t_flag==1){
+					t_next_loc = tcnt->loc;
+					break;
+				}
+			}
+		}
 
+
+
+	}
 	fclose(fp);
 	fclose(list);
 	fclose(object);
-	
+	return 0;	
 }
 
 int GetObj(assem_node *cur_node){
+	//Get obejct code in current node(cur_node)
+	//If this node(cur_node) has error, return -1
+	//Else, return 0;
+	int sym_addr;
+	int i=0;
 	if(cur_node->type == PSEUDO_INST){
-		
+		switch(FindPseudoInstr(cur_node->inst)){
+			case BYTE:
+			case WORD:
+				if(!strcmp(cur_node->operand[0],"X")){
+					cur_node->size  = (int)(strlen(cur_node->operand[0])/2+strlen(cur_node->operand[0])%2);
+					cur_node->obj = HexToDec(cur_node->operand[1]);
+				}
+				else if(!strcmp(cur_node->operand[0],"C")){
+					cur_node->size  = (int)strlen( cur_node->operand[0] );
+					for(i=0 ; i < strlen(cur_node->operand[1]) ; i++){
+						cur_node->obj *= (16*16);
+						cur_node->obj += cur_node->operand[1][i];
+					}
+				}
+				else{
+					cur_node->obj = StrToDec(cur_node->operand[0]);
+				}
+				break;
+			default:
+				break;
+		}
 	}
 	else if(cur_node->type == INST){
+		//Set object code accrding to the format
+		switch(cur_node->form){
+			case 1:
+				cur_node->size = 1;
+				cur_node->obj = cur_node->opcode;
+				break;
+			case 2:
+				cur_node->size = 2;
+				cur_node->obj = (cur_node->opcode)*16*16;
+				if(!strcmp(cur_node->inst,"CLEAR")|| !strcmp(cur_node->inst,"TIXR")){
+					cur_node->obj += FindReg(cur_node->operand[0])*16;
+				}
+				else if(!strcmp(cur_node->inst,"CVC")){
+					cur_node->obj += HexToDec(cur_node->operand[0])*16;
+				}
+				else if(!strcmp(cur_node->inst,"SHIFTL")|| !strcmp(cur_node->inst,"SHIFTR")){
+					cur_node->obj += FindReg(cur_node->operand[0])*16;
+					cur_node->obj += HexToDec(cur_node->operand[1]);
+				}
+				else{
+					cur_node->obj += FindReg(cur_node->operand[0])*16;
+					cur_node->obj += FindReg(cur_node->operand[1]);//Question
+				}
+				break;
+			case 3:
+				pc_addr = cur_node->loc + 3;
+				cur_node->size = 3;
+				cur_node->obj = (cur_node->opcode)*16*16*16*16;
+				if( !strcmp(cur_node->operand[1], "X") ){
+					cur_node->obj += (2*2*2)*(16*16*16);
+				}
 
+				//Set object code according to the address mode
+				switch(cur_node->addr_mode){
+					//in immediate mode
+					case IMMED:
+						cur_node->obj += (IMMED)*16*16*16*16;
+						if('0' <= cur_node->operand[0][0]
+								&& cur_node->operand[0][0] <= '9')
+							cur_node->obj += StrToDec(cur_node->operand[0]);
+						else{
+							sym_addr = SearchSymbol(cur_node->operand[0]);
+							if(sym_addr==-1){
+								PRINT_ERROR(cur_node->line,"Referenced an undeclared symbol!");
+								return -1;
+							}
+							//pc relative
+							if( sym_addr-pc_addr >= -2048 && sym_addr-pc_addr <= 2047){
+								if((sym_addr-pc_addr)<0)
+									cur_node->obj += 16*16*16; 
+								cur_node->obj += sym_addr-pc_addr;
+								cur_node->obj += 2*16*16*16;
+							}
+							//base relative
+							else if( 0<=sym_addr-base_addr && sym_addr-base_addr <= 4095){
+								cur_node->obj += sym_addr-base_addr;
+								cur_node->obj += 4*16*16*16;
+							}
+						}
+						break;
+					//in indircet mode
+					case INDIR:
+						cur_node->obj += (INDIR)*16*16*16*16;
+						sym_addr = SearchSymbol(cur_node->operand[0]);
+						if(sym_addr==-1){
+							PRINT_ERROR(cur_node->line,"Referenced an undeclared symbol!");
+							return -1;
+						}
+						//pc relative
+						if( sym_addr-pc_addr >= -2048 && sym_addr-pc_addr <= 2047){
+							if((sym_addr-pc_addr)<0)
+								cur_node->obj += 16*16*16; 
+							cur_node->obj += sym_addr-pc_addr;
+							cur_node->obj += 2*16*16*16;
+						}
+						//base relative
+						else if( 0<=sym_addr-base_addr && sym_addr-base_addr <= 4095){
+							cur_node->obj += sym_addr-base_addr;
+							cur_node->obj += 4*16*16*16;
+						}	
+						break;
+					//in simple addressing mode or SIC format
+					default:
+						if(!strcmp(cur_node->operand[0],"\0")){
+							cur_node->obj += (SIMPLE)*16*16*16*16;
+							cur_node->addr_mode = SIMPLE;
+						}
+						else{
+							sym_addr = SearchSymbol(cur_node->operand[0]);
+							if(sym_addr==-1){
+								PRINT_ERROR(cur_node->line,"Referenced an undeclared symbol!");
+								return -1;
+							}
+							//pc relative
+							if( sym_addr-pc_addr >= -2048 && sym_addr-pc_addr <= 2047){
+								cur_node->obj += (SIMPLE)*16*16*16*16;
+								if((sym_addr-pc_addr)<0)
+									cur_node->obj += 16*16*16; 
+								cur_node->obj += sym_addr-pc_addr;
+								cur_node->obj += 2*16*16*16;
+							}
+							//base relative
+							else if( 0<=sym_addr-base_addr && sym_addr-base_addr <= 4095){
+								cur_node->obj += (SIMPLE)*16*16*16*16;
+								cur_node->obj += sym_addr-base_addr;
+								cur_node->obj += 4*16*16*16;
+							}
+							else{
+								cur_node->addr_mode = SIC;
+								cur_node->obj += sym_addr;
+							}
+
+						}
+						break;
+				}
+			
+				
+				break;
+			case 4:
+				cur_node->size = 4;
+				cur_node->obj = ((cur_node->opcode)+(cur_node->addr_mode))*16*16*16*16*16*16;
+				cur_node->obj += 1*16*16*16*16*16;
+				if(cur_node->addr_mode == SIMPLE){
+					if(SearchSymbol(cur_node->operand[0])==-1){
+						PRINT_ERROR(cur_node->line,"Referenced an undeclared symbol!");
+						return -1;
+					}
+					cur_node->obj += SearchSymbol(cur_node->operand[0]);
+				}
+				else if(cur_node->addr_mode == IMMED){
+					cur_node->obj += StrToDec(cur_node->operand[0]);
+				}
+				break;
+		}
 	}
+	return 0;
 }
 
 int AssemPass1(char* file_name){
-	int i;
 	FILE *fp = fopen(file_name, "r");
 	char asm_line[MAX_LINESIZE];
 	char tk_str[MAX_ASM_TOKEN][MAX_LINESIZE] = {'\0'};
-	int location;
-	int pc;
 
 	InitSymbolTable();
 	while(fgets(asm_line,MAX_LINESIZE,fp)!=NULL){
@@ -243,7 +508,7 @@ int AssemPass1(char* file_name){
 	}
 //	PrintList(asm_line);//DD
 	fclose(fp);
-
+	return 0;
 }
 void InitSymbolTable(){
 	int i=0;
@@ -255,7 +520,6 @@ void InitSymbolTable(){
 }
 int AssemToken(char asm_line[], char tk_str[][MAX_LINESIZE]){
 	int i=0, j=0;
-	int comment_flag=0;
 	char *tk;
 	char asm_str[MAX_LINESIZE] = {'\0'};
 
@@ -293,6 +557,7 @@ int AssemToken(char asm_line[], char tk_str[][MAX_LINESIZE]){
 		i++;
 
 	}while( (tk = strtok(NULL, " \t\n")) );
+	return 0;
 }
 
 
@@ -312,10 +577,10 @@ int MakeAssemNode(char tk_str[][MAX_LINESIZE]){
 	strcpy(new_node->operand[0], "\0");
 	strcpy(new_node->operand[1], "\0");
 	
+	new_node->obj = 0;
 	new_node->next = NULL;
 	new_node->type = -1;
-	
-	new_node->line = (assem_rear==NULL) ?  5 : ( (assem_rear->line) + 5 );
+	new_node->line = (assem_head==NULL) ? 5  : ( (assem_rear->line) + 5 );
 
 	type=GetType_and_SaveInst(new_node,tk_str);
 	
@@ -401,14 +666,23 @@ void GetLoc(assem_node *new_node){
 	}
 }
 
+int FindReg(char *str){
+	int i;
+	char reg[9][4] = {"A","X","L","B","S","T","F","PC","SW"};
+	for(i=0; i<9; i++){
+		if(!strcmp(str,reg[i])) return i;
+	}
+	return -1;
+}
+
 int MakeSymbolTable(assem_node *new_node){
 	symbol_node *cur,*bef;
 	symbol_node *new_sym;
 	int start_flag=1;
-	int i=0;
+	int i=1;
 
 	if( !strcmp(new_node->sym, "\0") )	return 0;	
-	else if( !strcmp(new_node->inst,"start") )return 0;
+	else if( !strcmp(new_node->inst,"START") ) return 0;
 
 	new_sym = (symbol_node*)malloc(sizeof(symbol_node));
 	strcpy( new_sym -> sym , new_node->sym);
@@ -421,7 +695,7 @@ int MakeSymbolTable(assem_node *new_node){
 
 
 	//check 
-	if(SearchSymbol( new_node->sym)==-1){
+	if(SearchSymbol( new_node->sym)!=-1){
 		PRINT_ERROR(new_node->line , "Overlap symbols");
 		return ERROR;
 	}
@@ -431,8 +705,8 @@ int MakeSymbolTable(assem_node *new_node){
 			
 		if( new_sym->sym[i] > cur->sym[i]){
 			if(start_flag) {
-				bef = new_sym;
-				new_sym->next = cur;
+				new_sym->next = bef;
+				symbol_table[(new_node->sym)[0]-'A'].next = new_sym;
 			}
 			else {					
 				bef->next = new_sym;
@@ -449,6 +723,10 @@ int MakeSymbolTable(assem_node *new_node){
 			cur = cur->next;
 		}
 		start_flag = 1;
+	}
+	if(cur == NULL){
+		new_sym->next = NULL;
+		bef->next = new_sym; 
 	}
 	return 0;	
 }
@@ -541,11 +819,12 @@ int GetPseudoOperand(assem_node *new_node, char tk_str[][MAX_LINESIZE]){
 			strcpy( new_node->operand[0] ,tk_str[1+is_sym]);
 			break;
 	}
+	return 0;
 }
 int IsReg(char *c){
 	int i;
 	char reg[10][3] = {"A","X","L","B","S","T","F","PC","SW"};
-	for(int i=0; i<9; i++){
+	for(i=0; i<9; i++){
 		if(!strcmp(c, reg[i]) ){
 			return 1;
 		}
@@ -555,7 +834,7 @@ int IsReg(char *c){
 
 int GetOperand(assem_node *new_node, char tk_str[][MAX_LINESIZE]){
 
-	int i,j;
+	int i;
 	int is_sym = (!strcmp(new_node->sym , "\0")) ? 0 : 1;
 	char oper2_except[4][3][10] = {
 		{"CLEAR","TIXR"},//r1
@@ -654,12 +933,12 @@ int GetOperand(assem_node *new_node, char tk_str[][MAX_LINESIZE]){
 			}
 			break;
 	}
+	return 0;
 }
 int GetType_and_SaveInst(assem_node *new_node, char tk_str[][MAX_LINESIZE]){
 	//comment	
 	int opcode[3];
 	int pseudo[3];
-	int error_flag=0;
 	int i;
 	if(tk_str[0][0]=='.'){
 		new_node->type = COMMENT;
@@ -691,15 +970,17 @@ int GetType_and_SaveInst(assem_node *new_node, char tk_str[][MAX_LINESIZE]){
 		}
 	}
 
-	//symbol, instruction, opcode o.w
-	
+	//Get symbol, instruction, opcode o.w
+
+	//If this instruction has opcode or pseudo code, find and save to opcode[i] and pseudo[i]
+	//If not, opcode[i] or pseudo[i] is -1
 	for(int i=0; i<2; i++){
 		opcode[i] = FindOpcode(tk_str[i]);
 		pseudo[i] = FindPseudoInstr(tk_str[i]);
-	//	printf("%d ||op:%d pse: %d \n",i,opcode[i],pseudo[i]);
 	}	
 	
-	//process error
+	
+	//Process ERROR: 2/no instruction in a line 
 	if(opcode[0]==-1 && pseudo[0]==-1 
 			&& opcode[1]== -1 && pseudo[1]==-1){
 		PRINT_ERROR(new_node->line, "invalid instruction");
@@ -711,10 +992,15 @@ int GetType_and_SaveInst(assem_node *new_node, char tk_str[][MAX_LINESIZE]){
 		return ERROR;
 	}
 
+	//Separate instruction type(instruction / pseudo instruction)
 	for(int i=0; i<2; i++){
+		
+		//If exist symbol, save it
 		if(i==1){
 			strcpy(new_node->sym,tk_str[0]);
 		}
+
+		//instruction type is instruction
 		if(opcode[i]!=-1){
 			strcpy(new_node->inst, tk_str[i]);
 			new_node->opcode = opcode[i];
@@ -722,12 +1008,15 @@ int GetType_and_SaveInst(assem_node *new_node, char tk_str[][MAX_LINESIZE]){
 			new_node->type = INST;
 			return INST;
 		}
+
+		//instruction type is pseudo instruction
 		else if(pseudo[i]!=-1){
 			strcpy(new_node->inst, tk_str[i]);
 			new_node->type = PSEUDO_INST;
 			return PSEUDO_INST;
 		}
 	}
+	return 0;
 }
 
 int FindOpcode(char* key){	

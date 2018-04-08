@@ -34,8 +34,11 @@
 #define MAX_FILENAME 55
 #define MAX_ASM_TOKEN 7
 #define PRINT_ERROR( line , c ) printf("line %d ERROR:: %s\n",line,c) 
+#define OBJ_LINE_SIZE 30
+
+
 //enum about valid command
-enum COMMANDTYPE {
+enum COMMAND_TYPE {
 	H = 0,
 	D,
 	Q,
@@ -91,7 +94,17 @@ enum PSEUDO_INSTR_TYPE{
 	RESB,
 	RESW
 };
-
+enum REGISTER_{
+	REG_A=0,
+	REG_X,
+	REG_L,
+	REG_B,
+	REG_S,
+	REG_T,
+	REG_F,
+	REG_PC,
+	REG_SW
+};
 enum ADDRESS_MODE{
 	SIC = 0,
 	IMMED = 1,
@@ -105,14 +118,17 @@ char pseudo_instr[7][10]={
 int pc_addr=0,base_addr=0;
 
 typedef struct AssemNode{
+	int t_flag;
+
 	int line;
 	int loc;
-
+	int size;
 	int type;
 	int form;
 
 	int addr_mode;
 
+	unsigned obj;
 	int opcode;
 	char comment[55];
 	char sym[12];
@@ -151,6 +167,7 @@ int GetType_and_SaveInst(assem_node *new_node, char tk_str[][MAX_LINESIZE]);
 char* FindForm(char* key);
 int FindPseudoInstr(char* key);
 
+int FindReg(char *str);
 void GetLoc(assem_node *new_node);
 int StrToDec(char* str);
 int FindOpcode(char* key);
