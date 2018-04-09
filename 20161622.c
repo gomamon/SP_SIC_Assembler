@@ -80,7 +80,7 @@ int main(){
 		printf("sicsim> ");
 		mode = Input();
 		// execute the command according to mode
-		if(mode!=-1)	AddHistory();	// If input is valid, add command to history 
+		if(mode!=-1 && mode!=ASSEMBLE)	AddHistory();	// If input is valid, add command to history 
 
 		switch(mode){
 			case -1:	// If input is invalid, get input again
@@ -95,6 +95,8 @@ int main(){
 			case Q:		// memory free and exit the program
 				FreeHistory();
 				FreeHash();
+				InitAssemNode();
+				InitSymbolTable();
 				return 0;
 				break;
 			case HI:	// execute History()
@@ -119,7 +121,8 @@ int main(){
 				OpcodeMnemonic();
 				break;
 			case ASSEMBLE:		//excute Assemble
-				Assemble(par[0]);
+				if(Assemble(par[0]) != -1)
+					AddHistory();
 				break;
 			case TYPE:		//excute Type
 				Type(par[0]);

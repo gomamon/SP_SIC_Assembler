@@ -15,6 +15,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+//enum to distinguish instruction type*/
 enum ASSEM_TYPE{
 	ERROR = -1,
 	COMMENT = 0,
@@ -22,6 +23,7 @@ enum ASSEM_TYPE{
 	INST= 2
 
 };
+//enum to distinguish pseudo instruction type
 enum PSEUDO_INSTR_TYPE{
 	START = 0,
 	END,
@@ -32,6 +34,7 @@ enum PSEUDO_INSTR_TYPE{
 	RESW
 };
 
+//enum about address_mode and n,i bit
 enum ADDRESS_MODE{
 	SIC = 0,
 	IMMED = 1,
@@ -39,18 +42,28 @@ enum ADDRESS_MODE{
 	SIMPLE
 };
 
+//string about pseudo instruction
 char pseudo_instr[7][10]={
 	"START","END","BASE","BYTE","WORD","RESB","RESW"
-};
+};	
+
+//pc and base address
 int pc_addr=0,base_addr=0;
+
+//assemble node
 assem_node *assem_head = NULL;
 assem_node *assem_rear = NULL;
+
+//symbol table
 symbol_table_node symbol_table[26];
 
 
 
 int Assemble(char *file_name){
-	FILE *fp;
+	//Excution Assemble command(assemble file and make '.lst''.obj')
+	//if .asm file have error return -1
+	
+	FILE *fp=NULL;
 
 	//check file type and name
 	if(!IsAssemFile(file_name)){
@@ -67,22 +80,28 @@ int Assemble(char *file_name){
 
 	fclose(fp);
 
-	//InitAssemNode();
+	//initialization
+	pc_addr=0,base_addr=0;
+	assem_head = NULL;
+	assem_rear = NULL;
 	InitAssemNode();
 	InitSymbolTable();
 
+	//process string and symbol table
 	if(AssemPass1(file_name)==-1){
 		InitAssemNode();
 		InitSymbolTable();
 		return -1;
 	}
 
+	//make '.lst' '.obj'
 	if(AssemPass2(file_name)==-1){
 		InitAssemNode();
 		InitSymbolTable();
 		return -1;
 	}
 
+	
 	return 0;
 
 }
@@ -90,8 +109,11 @@ int Assemble(char *file_name){
 
 
 int Symbol(){
+	//Excution symbol command
+	//print symbol table
 	int i;
 	symbol_node* cur;
+
 	if(assem_head==NULL){
 		printf("A file recently assembled doesn't exist!\n");
 		return -1;
@@ -131,7 +153,7 @@ int IsAssemFile(char *file_name){
 
 int AssemPass2(char* file_name){
 	//Make .lst file and .obj
-	//
+	
 	FILE *fp = fopen(file_name, "r");	//read .asm file 
 	FILE *list;		//FILE POINTER for .lst file
 	FILE *object;	//FILE POINTER for .obj file
@@ -260,22 +282,27 @@ int AssemPass2(char* file_name){
 
 	//Make .obj file using data in assem_node
 	for(cur = assem_head->next; cur!=NULL ;cur = cur->next){
+		//if end break this loop
 		if(!strcmp(cur->inst,"END")){
 			break;
 		}
 		if(cur->size==0){
 			continue;
 		}
+
 		if(cur->t_flag){
+			//get line size
 			for(tcnt=cur->next;tcnt!=NULL; tcnt=tcnt->next){
 				if(tcnt->t_flag==1){
 					t_next_loc = tcnt->loc;
 					break;
 				}
 			}
+			//print 'T' and address
 			fprintf(object, "\nT%06X%02X",cur->loc,t_next_loc - (cur->loc) );
 		}
 
+		//print object code to '.obj' according to size t
 		switch(cur->size){
 			case 1:
 				fprintf(object,"%02X",cur->obj);
@@ -291,11 +318,15 @@ int AssemPass2(char* file_name){
 				break;
 		}
 	}
+
+	//print modification to '.obj'
 	for(cur = assem_head->next; cur!=NULL ;cur = cur->next){
+		//if end, print 'X' and break this loop
 		if(!strcmp(cur->inst,"END")){		
 			fprintf(object, "\nE%06X\n",assem_head->loc);
 			break;
 		}	
+		//print 'M' and information about address
 		if(cur->form == 4 
 				&& ('0'>cur->operand[0][0]||cur->operand[0][0]>'9')){
 			fprintf(object, "\nM%06X%02X",(cur->loc)-(assem_head->loc)+1,5);
@@ -303,6 +334,10 @@ int AssemPass2(char* file_name){
 		
 		
 	}	
+
+	printf("output file : [%s], [%s]\n",list_name,object_name);
+
+	//file close
 	fclose(fp);
 	fclose(list);
 	fclose(object);
@@ -315,6 +350,8 @@ int GetObj(assem_node *cur_node){
 	//Else, return 0;
 	int sym_addr;
 	int i=0;
+
+	//In pseudo instruction, set object code according to the instruction
 	if(cur_node->type == PSEUDO_INST){
 		switch(FindPseudoInstr(cur_node->inst)){
 			case BYTE:
@@ -338,13 +375,15 @@ int GetObj(assem_node *cur_node){
 				break;
 		}
 	}
+	//In instruction, Set object code accrding to the format
 	else if(cur_node->type == INST){
-		//Set object code accrding to the format
 		switch(cur_node->form){
+			//in format 1
 			case 1:
 				cur_node->size = 1;
 				cur_node->obj = cur_node->opcode;
 				break;
+			//in format 2
 			case 2:
 				cur_node->size = 2;
 				cur_node->obj = (cur_node->opcode)*16*16;
@@ -360,9 +399,11 @@ int GetObj(assem_node *cur_node){
 				}
 				else{
 					cur_node->obj += FindReg(cur_node->operand[0])*16;
-					cur_node->obj += FindReg(cur_node->operand[1]);//Question
+					cur_node->obj += FindReg(cur_node->operand[1]);
 				}
 				break;
+
+			//in format 3
 			case 3:
 				pc_addr = cur_node->loc + 3;
 				cur_node->size = 3;
@@ -458,9 +499,11 @@ int GetObj(assem_node *cur_node){
 				
 				break;
 			case 4:
+				//format 4
 				cur_node->size = 4;
 				cur_node->obj = ((cur_node->opcode)+(cur_node->addr_mode))*16*16*16*16*16*16;
 				cur_node->obj += 1*16*16*16*16*16;
+				//simple address mode
 				if(cur_node->addr_mode == SIMPLE){
 					if(SearchSymbol(cur_node->operand[0])==-1){
 						PRINT_ERROR(cur_node->line,"Referenced an undeclared symbol!");
@@ -468,6 +511,7 @@ int GetObj(assem_node *cur_node){
 					}
 					cur_node->obj += SearchSymbol(cur_node->operand[0]);
 				}
+				//immediate address mode
 				else if(cur_node->addr_mode == IMMED){
 					cur_node->obj += StrToDec(cur_node->operand[0]);
 				}
@@ -478,28 +522,44 @@ int GetObj(assem_node *cur_node){
 }
 
 int AssemPass1(char* file_name){
+	//Function to read '.asm' file 
+	//and make assem_ node that have data about assemble code.
+
 	FILE *fp = fopen(file_name, "r");
 	char asm_line[MAX_LINESIZE];
 	char tk_str[MAX_ASM_TOKEN][MAX_LINESIZE] = {'\0'};
 
-	InitSymbolTable();
+	//read and save data
 	while(fgets(asm_line,MAX_LINESIZE,fp)!=NULL){
-		
+		//token one line string in .asm file
 		AssemToken(asm_line, tk_str);
-
+		
+		//make assemble node. If this line have error return -1
 		if (MakeAssemNode(tk_str) ) return ERROR;
 		
-		if(FindPseudoInstr(assem_rear->inst) == END) break;
+		//if end, finish this loop
+		if(FindPseudoInstr(assem_rear->inst) == END) 
+			break;
 
 	}
-//	PrintList(asm_line);//DD
 	fclose(fp);
 	return 0;
 }
 void InitSymbolTable(){
+	//Function to free and intialize symbol table.
 	int i=0;
+	symbol_node *tmp_p, *del_p;
 
 	for(i=0 ; i<26; i++){
+		//free
+		tmp_p = symbol_table[i].next;	
+		while(1){	
+			if(tmp_p == NULL) break;
+			del_p = tmp_p;
+			tmp_p = tmp_p->next;
+			free(del_p);
+		}
+		//initialize
 		symbol_table[i].alpha = 'a'+i;
 		symbol_table[i].next = NULL;
 	}
@@ -539,7 +599,6 @@ int AssemToken(char asm_line[], char tk_str[][MAX_LINESIZE]){
 			break;
 		}
 
-		//process','
 		i++;
 
 	}while( (tk = strtok(NULL, " \t\n")) );
@@ -549,14 +608,12 @@ int AssemToken(char asm_line[], char tk_str[][MAX_LINESIZE]){
 
 
 int MakeAssemNode(char tk_str[][MAX_LINESIZE]){
-	
-	int type;
-
-
-	assem_node *new_node;
+	//make node to save data in assemble file using tk_str(token string)
+	int type;	//instruction type
+	assem_node *new_node;	//node to create
 	new_node = (assem_node*)malloc( sizeof(assem_node) );
 
-	//node init;
+	//node initialization;
 	strcpy(new_node->comment, "\0");
 	strcpy(new_node->sym, "\0");
 	strcpy(new_node->inst, "\0");
@@ -598,6 +655,8 @@ int MakeAssemNode(char tk_str[][MAX_LINESIZE]){
 	return 0;
 }
 int StrToDec(char* str){
+	//make str to decimal number and return
+	//
 	int i=0;
 	int dec=0;
 	if(str[0] == '\0'){
@@ -610,25 +669,35 @@ int StrToDec(char* str){
 	return dec;
 }
 void GetLoc(assem_node *new_node){
+	//function to get location using data in new_node 
 	int bef_loc;
+
+	//if new_node is first
 	if(assem_rear == NULL){
 		new_node->loc = pc_addr;
 	}
+
 	else{
-		 bef_loc = assem_rear -> loc;;
+		//get before location
+		 bef_loc = assem_rear -> loc;
+		 
+		 //get loction according to instruction type
 		switch(assem_rear->type){
 			case COMMENT:
 				new_node->loc = bef_loc;
 				break;
 			case PSEUDO_INST:
+				//get loctaion accrding to pseudo instruction.
 				switch(FindPseudoInstr(assem_rear->inst)){
 					case START:
 					case BASE:
 						new_node->loc = bef_loc;
 						break;
 					case BYTE:
+						//if hexcadecimal
 						if(assem_rear->operand[0][0] == 'X')
 							new_node->loc = bef_loc + (HexToDec(assem_rear->operand[1])/ 256 )+ 1;
+						//if charictor
 						else if(assem_rear->operand[0][0] == 'C')
 							new_node->loc = bef_loc + strlen(assem_rear->operand[1]);
 						break;
@@ -644,6 +713,7 @@ void GetLoc(assem_node *new_node){
 				}
 				break;
 
+			//get loction if instruction type is instruction
 			case INST:
 				new_node->loc = bef_loc + assem_rear -> form;
 				break;
@@ -653,8 +723,10 @@ void GetLoc(assem_node *new_node){
 }
 
 int FindReg(char *str){
+	//Find regisister and return resister number
+	//If str is not register, return -1
 	int i;
-	char reg[9][4] = {"A","X","L","B","S","T","F","PC","SW"};
+	char reg[9][4] = {"A","X","L","B","S","T","F","PC","SW"};//register terminate
 	for(i=0; i<9; i++){
 		if(!strcmp(str,reg[i])) return i;
 	}
@@ -662,33 +734,44 @@ int FindReg(char *str){
 }
 
 int MakeSymbolTable(assem_node *new_node){
-	symbol_node *cur,*bef;
-	symbol_node *new_sym;
-	int start_flag=1;
+	//Make symbol table using assem_node
+	//symbol save in symbol_node['A'=0 ~ 'F'15 ]
+	//If successfully end , return 0
+	//It this code have error return -1
+	
+	symbol_node *cur,*bef;	
+	symbol_node *new_sym;	//node to save symbol
+	int start_flag=1;	
 	int i=1;
 
+	//if symbol is empty or start return 0
 	if( !strcmp(new_node->sym, "\0") )	return 0;	
 	else if( !strcmp(new_node->inst,"START") ) return 0;
 
+	//allocate symbol_node  and initial symbol_node
 	new_sym = (symbol_node*)malloc(sizeof(symbol_node));
 	strcpy( new_sym -> sym , new_node->sym);
 	new_sym -> loc =  new_node -> loc;
 		
+	//If symbol table[] is emtpy, link new symbol node and return 0
 	if(symbol_table[ (new_node->sym[0]) - 'A' ].next == NULL ){
 		symbol_table[ ((new_node->sym)[0]) - 'A' ].next = new_sym;
 		return 0;
 	}
 
 
-	//check 
+	//check overlap error!
 	if(SearchSymbol( new_node->sym)!=-1){
 		PRINT_ERROR(new_node->line , "Overlap symbols");
 		return ERROR;
 	}
 
+	//find place to link
 	bef = symbol_table[ (new_node->sym)[0] - 'A' ].next; 
 	for(cur = symbol_table[ (new_node->sym)[0] - 'A' ].next; cur!=NULL; ){
-			
+		
+		//if new symbol is bigger than next symbol,
+		//link new symbol node before next symbol node
 		if( new_sym->sym[i] > cur->sym[i]){
 			if(start_flag) {
 				new_sym->next = bef;
@@ -700,7 +783,8 @@ int MakeSymbolTable(assem_node *new_node){
 			}
 			break;
 		}
-			
+		
+		//if same alphabet check to next alphabet
 		else if( new_sym->sym[i]== cur->sym[i] ){				
 			i++;
 		}
@@ -710,6 +794,8 @@ int MakeSymbolTable(assem_node *new_node){
 		}
 		start_flag = 1;
 	}
+
+	//linke to last
 	if(cur == NULL){
 		new_sym->next = NULL;
 		bef->next = new_sym; 
@@ -718,16 +804,21 @@ int MakeSymbolTable(assem_node *new_node){
 }
 
 int SearchSymbol(char *key){
+	//Function to find symbol
 	//Find : return addr
 	//unfind : -1
 	symbol_node *cur;
 
+	// If not format or table is empty return -1
 	if(key[0]<'A' || key[0]>'Z')
 		return -1;
 	if(symbol_table[ key[0]-'A'].next==NULL)
 		return -1;
 
+
+	//Check linked symbol node with symbol table
 	for(cur = symbol_table[ key[0]-'A' ].next; cur!=NULL; ){
+		if(cur->sym==NULL) break;
 		if(!strcmp(cur->sym, key))	return cur->loc;
 		cur = cur->next;
 	}
@@ -735,11 +826,17 @@ int SearchSymbol(char *key){
 }
 
 int GetPseudoOperand(assem_node *new_node, char tk_str[][MAX_LINESIZE]){
+	//Precess operand in pseudo instruction
+	//if this line has error, return -1
+	//else return 0
+	
 	int i;
 	int is_sym = (!strcmp(new_node->sym , "\0")) ? 0 : 1;
 	
+	//process operand according to instruction
 	switch(FindPseudoInstr(new_node->inst)){
 		case START:
+			// if opernad is hex, then save data
 			if(IsHex(tk_str[1+is_sym])){
 				pc_addr = HexToDec(tk_str[1+is_sym]);
 				strcpy( new_node -> operand[0] , tk_str[1+is_sym]);
@@ -768,6 +865,8 @@ int GetPseudoOperand(assem_node *new_node, char tk_str[][MAX_LINESIZE]){
 			break;
 		case BYTE:
 		case WORD:
+			//Check the format and find type of operator
+			//and process operand accorcing to operand type
 			if((tk_str[1+is_sym][0]=='X' ||tk_str[1+is_sym][0]=='C')
 					&& tk_str[1+is_sym][strlen(tk_str[1+is_sym]) - 1] == '\'' 
 						&& (tk_str[1+is_sym][1]=='\'')){
@@ -810,6 +909,8 @@ int GetPseudoOperand(assem_node *new_node, char tk_str[][MAX_LINESIZE]){
 	return 0;
 }
 int IsReg(char *c){
+	//If c is register, return 1
+	//if c is not register, return 0
 	int i;
 	char reg[10][3] = {"A","X","L","B","S","T","F","PC","SW"};
 	for(i=0; i<9; i++){
@@ -823,27 +924,32 @@ int IsReg(char *c){
 int GetOperand(assem_node *new_node, char tk_str[][MAX_LINESIZE]){
 
 	int i;
-	int is_sym = (!strcmp(new_node->sym , "\0")) ? 0 : 1;
+	int is_sym = (!strcmp(new_node->sym , "\0")) ? 0 : 1; //If this line has symbol add 1
 	char oper2_except[4][3][10] = {
 		{"CLEAR","TIXR"},//r1
 		{"CVC","CVC"},	//n
 		{"SHIFTL", "SHIFTR"}//r1, n
-	};
+	}; //instruction to process exceptionlly in format 2
 
 	switch(new_node->form){
+		//in format 1
 		case 1:
+			//check error (has more instruction)
 			if(strcmp(tk_str[1 + is_sym],"\0")){
 				PRINT_ERROR(new_node->line, "Incorrect format!");
 				return ERROR;
 			}
 			return 0;
 			break;
+
+		//in format 2
 		case 2:
-			for(i=0;i<2;i++){
+			//process command exceptionally in format 2
+			for(i=0;i<=2;i++){
 				if( ( !strcmp(oper2_except[i][0],new_node->inst) )
 						|| (!strcmp(oper2_except[i][1],new_node->inst)) ){
-					
 					switch(i){
+						//"CLEAR","TIXR" - r1
 						case 0:
 							if(IsReg(tk_str[1+is_sym])){
 								strcpy(new_node->operand[0] , tk_str[1+is_sym]);
@@ -854,6 +960,7 @@ int GetOperand(assem_node *new_node, char tk_str[][MAX_LINESIZE]){
 								return ERROR;
 							}
 							break;
+						//"CVC","CVC" - n
 						case 1:
 							if(IsHex(tk_str[1+is_sym])){
 								strcpy(new_node->operand[0], tk_str[1+is_sym]);
@@ -864,6 +971,7 @@ int GetOperand(assem_node *new_node, char tk_str[][MAX_LINESIZE]){
 								return ERROR;
 							}
 							break;
+						//"SHIFTL", "SHIFTR" - r1, n
 						case 2:
 							if(IsReg(tk_str[1+is_sym]) && IsHex(tk_str[3+is_sym])){
 								strcpy(new_node->operand[0], tk_str[1+is_sym]);
@@ -878,6 +986,7 @@ int GetOperand(assem_node *new_node, char tk_str[][MAX_LINESIZE]){
 					}
 				}
 			}
+			// r1, r2
 			if(IsReg(tk_str[1+is_sym])&&IsReg(tk_str[3+is_sym])){
 				strcpy(new_node->operand[0], tk_str[1+is_sym]);
 				strcpy(new_node->operand[1], tk_str[3+is_sym]);
@@ -890,7 +999,7 @@ int GetOperand(assem_node *new_node, char tk_str[][MAX_LINESIZE]){
 			break;
 		case 3:
 		case 4:
-				
+			//distinguish address mode
 			switch(tk_str[1+is_sym][0]){
 				case '#':
 					strcpy(new_node->operand[0], &tk_str[1+is_sym][1]);
@@ -906,8 +1015,11 @@ int GetOperand(assem_node *new_node, char tk_str[][MAX_LINESIZE]){
 					break;
 			}
 			
+
+			//no operand instruction
 			if( (!strcmp(new_node->inst, "RSUB")) && (!strcmp(tk_str[1+is_sym],"\0")))
 				return 0;
+			//if operand has x resgister
 			else if(!strcmp(tk_str[3+is_sym],"X")){
 				strcpy(new_node->operand[1],"X");
 				return 0;
@@ -924,18 +1036,21 @@ int GetOperand(assem_node *new_node, char tk_str[][MAX_LINESIZE]){
 	return 0;
 }
 int GetType_and_SaveInst(assem_node *new_node, char tk_str[][MAX_LINESIZE]){
-	//comment	
+	//distinguish instruction type and save instruction and symbol
+	//and processing error about insruction and symbol
+	
 	int opcode[3];
 	int pseudo[3];
 	int i;
+
+	//comment
 	if(tk_str[0][0]=='.'){
 		new_node->type = COMMENT;
 		strcpy(new_node->comment, tk_str[1]);
 		return COMMENT;
 	}
 	
-	//printf("%s | %s | %s | %s \n",tk_str[0],tk_str[1],tk_str[2],tk_str[3]);
-	//save symbol, instruction, opcode in format 4;
+	//format 4
 	for(i=0; i<2; i++){
 		if(tk_str[i][0]=='+') {
 			opcode[3] = FindOpcode(&tk_str[i][1]);
@@ -1008,6 +1123,7 @@ int GetType_and_SaveInst(assem_node *new_node, char tk_str[][MAX_LINESIZE]){
 }
 
 int FindPseudoInstr(char* key){
+	//If key is pseudo instruction, return pseudo number (START = 0,... )
 	int i;	
 	for(i=0; i < 7; i++){
 		if(!strcmp(key, pseudo_instr[i]))
@@ -1020,6 +1136,7 @@ int FindPseudoInstr(char* key){
 
 
 void InitAssemNode(){
+	//Initailize assem_node
 	assem_node *tmp_p, *del_p;
 
 	tmp_p = assem_head;	
@@ -1037,6 +1154,8 @@ void InitAssemNode(){
 
 
 int Type(char *file_name){
+	//excution TYPE command 
+	//file open and print contents
 	FILE *fp = fopen(file_name,"r");
 	char in;
 
@@ -1044,9 +1163,11 @@ int Type(char *file_name){
 		printf("File not found\n");
 		return -1;
 	}
+
 	while( fscanf(fp,"%c",&in)!=EOF ){
 		printf("%c",in);
 	}
+
 	fclose(fp);
 	return 0;
 }
