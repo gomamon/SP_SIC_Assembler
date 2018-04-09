@@ -32,7 +32,7 @@ int FindReg(char *str);
 char* FindForm(char* key);
 int FindPseudoInstr(char* key);
 int FindOpcode(char* key);
-
+int IsReg(char *c);
 /*Type*/
 int Type(char *file_name);
 int GetOperand(assem_node *new_node, char tk_str[][MAX_LINESIZE]);
@@ -40,7 +40,7 @@ int GetPseudoOperand(assem_node *new_node, char tk_str[][MAX_LINESIZE]);
 
 /*Symbol*/
 int Symbol();
-int SearchSymbol();
+int SearchSymbol(char *key);
 int MakeSymbolTable(assem_node *new_node);
 
 /*Function to Process Hexadecimal and Decimal number*/
