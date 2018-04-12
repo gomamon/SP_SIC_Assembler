@@ -4,14 +4,11 @@
 #define MAX_DATA 256		//max data size	(0x00~0xff)
 #define HASH_SIZE 20		//hash size
 #define HASH_MOD 20			//modular to get modual value
-
-
-
-#define MAX_LINESIZE 120
-#define MAX_FILENAME 55
-#define MAX_ASM_TOKEN 7
-#define PRINT_ERROR( line , c ) printf("line %d ERROR:: %s\n",line,c) 
-#define OBJ_LINE_SIZE 30
+#define MAX_LINESIZE 120	//one line size
+#define MAX_FILENAME 55		//file name size
+#define MAX_ASM_TOKEN 7		//token nunber
+#define PRINT_ERROR( line , c ) printf("line %d ERROR:: %s\n",line,c) //error macro
+#define OBJ_LINE_SIZE 30	//objfile line max size
 
 /**node to save History**/
 typedef struct HistoryNode{
@@ -47,7 +44,7 @@ typedef struct SymbolTableNode{
 	struct SymbolNode *next;
 } symbol_table_node;
 
-
+/*assemble node*/
 typedef struct AssemNode{
 	int t_flag;
 
